@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { player } from '@/data/player'
-import { mainTabsList } from '@/navigation'
+import { mainTabsList } from '@/app/navigation'
 </script>
 <template>
   <div id="navigatorBar">

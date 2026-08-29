@@ -8,7 +8,7 @@ import {
   getUnlockedNormalAchievementCount,
   hasAchievement,
 } from '@/access'
-import { temp } from '@/temp'
+import { temp } from '@/app/temp'
 import { format, formatWhole } from '@/tools/format'
 import {
   calculate,

@@ -19,7 +19,7 @@ import { compareLayer } from '@/tools/ordinal'
 import { softCapValue } from '@/tools/softCap'
 import { format } from '@/tools/format'
 import { doReset } from './reset'
-import { addLog } from '@/log'
+import { addLog } from '@/app/log'
 
 /**挑战的所属重置层，'normal'为常规层级，其余为元层id */
 export type ChallengeLayer = 'normal' | string

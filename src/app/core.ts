@@ -6,12 +6,12 @@ import { updateLayers, applyChallengePenalties } from '@/logic/update'
 import { updateAutomations } from '@/logic/automations'
 import { getMetaLayers } from '@/meta/registry'
 import { updateAchievements } from '@/logic/achievements'
-import { addLog } from '@/log'
+import { addLog } from '@/app/log'
 import { formatTime } from '@/tools/format'
-import { settings } from '@/settings'
+import { settings } from '@/app/settings'
 import { getPsdSpeed, hasKnowledge } from '@/compute/knowledge'
 import { OFFLINE_THRESHOLD } from '@/data/constants'
-import { openConfirm } from '@/dialog'
+import { openConfirm } from '@/app/dialog'
 
 const FPS: number = 30
 let saveTimer = 0

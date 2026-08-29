@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import { randomNews } from '@/news'
-import { settings } from '@/settings'
+import { randomNews } from '@/app/news'
+import { settings } from '@/app/settings'
 import { unlockSecretFlag } from '@/access'
 
 const containerRef = ref<HTMLElement>()

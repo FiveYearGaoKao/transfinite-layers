@@ -6,7 +6,7 @@ import {
   type ConfirmDialogOptions,
   type QuizDialogOptions,
   type SlotDialogOptions,
-} from '@/dialog'
+} from '@/app/dialog'
 import { getSlotSummaries, type SlotSummary } from '@/save/save'
 import { getAchievementCount } from '@/logic/achievements'
 import { format, formatTime } from '@/tools/format'

@@ -8,7 +8,7 @@ import { seedRng } from './rng'
 import { migrate } from './migration'
 import { checkCode, CHECKSUM_VERSION, CHECKSUM_SALT } from './checksum'
 import { versionComp } from '@/tools/utils'
-import { addLog } from '@/log'
+import { addLog } from '@/app/log'
 
 //------存档槽位------
 const CURRENT_SLOT_KEY = gameName + '-slot'

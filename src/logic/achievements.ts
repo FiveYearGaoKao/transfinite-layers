@@ -21,8 +21,8 @@ import {
   type EffectDef,
   type RegisteredEffect,
 } from '@/compute/effects'
-import { addLog } from '@/log'
-import { NEWS_COUNT } from '@/news'
+import { addLog } from '@/app/log'
+import { NEWS_COUNT } from '@/app/news'
 import type { LayerId } from '@/data/types'
 import { compareLayer } from '@/tools/ordinal'
 

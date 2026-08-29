@@ -1,7 +1,7 @@
 //存档工作流:槽位选择对话框 + 存档/读档/硬重置动作(UI层编排,供选项页/工具栏复用)
 //依赖对话框(ui)与存档操作,不能下沉到logic/save层,否则违反单向依赖
-import { openConfirm, openSlots } from '@/dialog'
-import { addLog } from '@/log'
+import { openConfirm, openSlots } from '@/app/dialog'
+import { addLog } from '@/app/log'
 import { hardReset, hasSlotSave, localLoad, localSave, setCurrentSlot } from '@/save/save'
 
 /**保存到所选槽位(弹出槽位选择框) */

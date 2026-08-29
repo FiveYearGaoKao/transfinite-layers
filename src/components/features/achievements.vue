@@ -6,7 +6,7 @@ import {
   getSecretAchievements,
   type AchievementDef,
 } from '@/logic/achievements'
-import { registerSubtabCycler, unregisterSubtabCycler } from '@/navigation'
+import { registerSubtabCycler, unregisterSubtabCycler } from '@/app/navigation'
 import { STORY } from '@/data/story'
 
 type achTab = 'achievements' | 'secrets' | 'story'

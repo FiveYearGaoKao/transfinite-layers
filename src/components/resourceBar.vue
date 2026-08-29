@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { settings } from '@/settings'
-import { RESOURCE_ITEMS } from '@/resourceRegistry'
+import { settings } from '@/app/settings'
+import { RESOURCE_ITEMS } from '@/app/resourceRegistry'
 
 /**按设置过滤后的资源条目(表格布局,行优先填充) */
 const resources = computed(() => {

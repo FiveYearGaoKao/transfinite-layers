@@ -12,6 +12,7 @@ export interface QuizQuestion {
   options?: string[]
   correctIndex?: number
 }
+type RandIntFn = (left: number, right: number) => number
 
 /**
  * 按难度分级生成一道数学题(纯函数)
@@ -20,10 +21,7 @@ export interface QuizQuestion {
  * tier 2:数字范围增大
  * tier 3:混合运算(如 a×b+c)
  */
-export function generateMathQuestion(
-  tier: number,
-  randInt: (left: number, right: number) => number,
-): QuizQuestion {
+export function generateMathQuestion(tier: number, randInt: RandIntFn): QuizQuestion {
   if (tier <= 0) {
     //经典问题"1+1=?"(隐藏成就"你是认真的?"):约1/200概率
     if (randInt(0, 200) == 0) return { text: '1+1=?', answer: new Decimal(2) }

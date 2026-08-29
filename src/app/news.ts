@@ -1,13 +1,14 @@
 import { gameName, gameVersion } from '@/data/constants'
 import { randInt } from '@/tools/utils'
 import { player } from '@/data/player'
-import { format } from './tools/format'
-import { getPoints } from './access'
+import { format } from '@/tools/format'
+import { getBase, getPoints } from '@/access'
 type newsItem = string | (() => string)
 const NEWS: newsItem[] = [
   //Hello World
   `console.log("Hello ${gameName} ${gameVersion} !")`,
   `std::cout<<"Hello"<<"${gameName}"<<"${gameVersion}"<<std::endl;`,
+  `print("Hello ${gameName} ${gameVersion} !")`,
   //滚动新闻
   '这是一条滚动新闻.',
   '这是另一条滚动新闻.',
@@ -28,6 +29,7 @@ const NEWS: newsItem[] = [
   '猜猜你要过多久才能再次看到这条新闻?',
   '热知识:收集完所有新闻可以获得一个隐藏成就',
   '添加这条新闻的目的只是为了水一次更新.',
+  '',
   //随机数
   () => `这是一个1~10000的随机数:${randInt(1, 10001)},如果它大于9900,说明你的运气很好;\
     如果它大于9990,说明你的运气非常好;如果它大于10000,说明你开了.`,
@@ -42,6 +44,7 @@ const NEWS: newsItem[] = [
   '转生,超越,转世,飞升...接下来是什么?真的需要发明那么多名词吗?',
   '为什么很多增量游戏都有"奇点"这个东西?',
   '怎么，没有软上限就不会制作游戏了吗?--hyp cos',
+  '增量游戏的核心是数字,界面没有那么重要',
   //增量哲学
   '地球OL为什么不算一种增量游戏?',
   '增量游戏中,每个升级都在推动点数增长,同样地,每个人的人生都有意义.',
@@ -52,6 +55,7 @@ const NEWS: newsItem[] = [
   '5:00:00←这是一个更新倒计时,第一分钟有60秒,第二分钟有120秒,此后每一分钟的秒数都是(60+已经过的秒数)；\
     第一小时有60分钟,此后每一小时的分钟数都是(60+已经过的秒数).倒计时归零时,下一次更新就来了.',
   '不更新.',
+  '等到野生狗奶过期也不会更新.',
   //游戏介绍
   '♥杂鱼作者三年还没有写出一个完整的增量游戏,真是杂鱼呢~♥',
   '本游戏使用了vue.js,这是作者第一个使用vue.js和vite制作的游戏.',
@@ -67,7 +71,7 @@ const NEWS: newsItem[] = [
   '"PLAYER"是一个缩写,它的意思是"Prestige LAYER".',
   '你难道没有觉得层级0和其它层级有什么不同吗?',
   '零多项式的次数应该是-Infinity,但在游戏中层级0和其它有限层级归为一类,这对吗?',
-  '每个大层中,只有前5层和后5层是有效的.',
+  () => `每个大层中,只有前${Math.ceil(getBase() / 2)}层和后${Math.floor(getBase() / 2)}层是有效的.`,
   '挑战2比挑战1简单难道不是常识吗?',
   //数学
   () => `${format(getPoints([0]))}很大吗?几乎所有的正整数都比它大!`,
@@ -80,10 +84,14 @@ const NEWS: newsItem[] = [
   '切,这才哪到哪(1,1,1,1)(2,1,1,1)(3,1,1,1)(3,1,1,0)(2,0,0,0)【BMS分析极限】\
     =λα.(Σ2-τ【α】+1-ο-Σ2-stb.【α】×(Σ2-τ【α】+1-ο-Σ2-stb.【α】×(Σ2-τ【α】+1-ο-Σ2-stb.【α】×α)))-Π0【0】',
   '你说得对,但是DNAO=(0,0,0)(1,1,1)(2,2,2)(3,3,0)...后面忘了',
+  '此拜谢仅用于保持活跃,不针对任何人或事',
   //音游梗
   'xxx xx xx xxxxxxx',
+  'x x xxx',
+  '噔~噔~咚~~~',
   'Testify',
   '你也许意识到了这件事,"无限"是掩盖未来的虚像...,前方是毁灭亦是重生.',
+  '!?感叹号问号问号感叹号?!',
   //RickRoll
   '永远不会放弃你~永远不会辜负你~永远不会跑来跑去~抛弃你~永远不会让你哭~永远不会说再见~永远不会对你说谎~伤害你~',
   '<a href="https://www.bilibili.com/video/BV1GJ411x7h7">这是一个超链接,你应该知道它代表什么.</a>',

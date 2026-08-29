@@ -11,7 +11,7 @@ import {
   posArray,
   shiftLayer,
 } from '@/tools/ordinal'
-import { temp } from '@/temp'
+import { temp } from '@/app/temp'
 
 /**获取某一层的引用 */
 export function getLayer(pos: LayerId | string): Layer | undefined {

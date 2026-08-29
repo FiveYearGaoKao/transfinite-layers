@@ -16,7 +16,7 @@ import {
   toggleResetAuto,
 } from '@/logic/automations'
 import { canReset, resetGain } from '@/compute/prestige'
-import { resetLayerConfirm, resetRunConfirm } from '@/uiActions'
+import { resetLayerConfirm, resetRunConfirm } from '@/app/uiActions'
 import { isChallengeActive } from '@/access'
 import { player } from '@/data/player'
 import { computed } from 'vue'

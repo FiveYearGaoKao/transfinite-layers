@@ -7,7 +7,7 @@ import { isLayer0, posArray, shiftLayer } from '@/tools/ordinal'
 import { productionPerSecond } from '@/compute/dimensions'
 import { hasUpgrade } from '@/compute/upgrades'
 import { initializeLayer } from '@/data/types'
-import { temp } from '@/temp'
+import { temp } from '@/app/temp'
 import { applyChallengeEffects } from './challenges'
 
 /**更新指定的层级(生产阶段) */

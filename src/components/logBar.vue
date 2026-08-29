@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { logs, clearLogs } from '@/log'
-import { settings } from '@/settings'
+import { logs, clearLogs } from '@/app/log'
+import { settings } from '@/app/settings'
 
 /**按设置过滤后的日志 */
 const filteredLogs = computed(() => logs.filter((l) => settings.logFilter[l.type]))

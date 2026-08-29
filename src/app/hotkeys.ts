@@ -1,13 +1,13 @@
 //快捷键:全局键盘监听(输入控件聚焦或对话框打开时不响应;设置里可整体开关)
 import { player } from '@/data/player'
-import { settings } from '@/settings'
-import { currentDialog } from '@/dialog'
+import { settings } from '@/app/settings'
+import { currentDialog } from '@/app/dialog'
 import { buyDimension } from '@/logic/purchase'
 import { toggleAllAuto, toggleLayerAuto } from '@/logic/automations'
 import { canReset } from '@/compute/prestige'
-import { doLoad, doSave } from '@/saveActions'
-import { cycleBoost, resetLayerConfirm } from '@/uiActions'
-import { cycleCurrentSubtab, cycleLayer, mainTabsList } from '@/navigation'
+import { doLoad, doSave } from '@/app/saveActions'
+import { cycleBoost, resetLayerConfirm } from '@/app/uiActions'
+import { cycleCurrentSubtab, cycleLayer, mainTabsList } from '@/app/navigation'
 
 /**全局按键处理 */
 function onKeydown(e: KeyboardEvent) {

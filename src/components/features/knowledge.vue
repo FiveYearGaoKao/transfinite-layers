@@ -3,8 +3,8 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import Decimal from 'break_eternity.js'
 import { format, formatTime } from '@/tools/format'
 import { player } from '@/data/player'
-import { settings, saveSettings } from '@/settings'
-import { registerSubtabCycler, unregisterSubtabCycler } from '@/navigation'
+import { settings, saveSettings } from '@/app/settings'
+import { registerSubtabCycler, unregisterSubtabCycler } from '@/app/navigation'
 import {
   canShow,
   getBoostPresets,

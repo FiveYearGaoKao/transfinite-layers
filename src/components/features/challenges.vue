@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { player } from '@/data/player'
 import { getLayerName } from '@/access'
 import { format, formatWhole } from '@/tools/format'
-import { registerSubtabCycler, unregisterSubtabCycler } from '@/navigation'
+import { registerSubtabCycler, unregisterSubtabCycler } from '@/app/navigation'
 import {
   challengeDone,
   challengeGoal,

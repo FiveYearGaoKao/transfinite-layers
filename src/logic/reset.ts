@@ -6,7 +6,7 @@ import { getLayerIndex, getLayerOrder, isLayer0, nextLayer, shiftLayer } from '@
 import { canReset, resetGain } from '@/compute/prestige'
 import { hasUpgrade } from '@/compute/upgrades'
 import { player } from '@/data/player'
-import { temp } from '@/temp'
+import { temp } from '@/app/temp'
 import { checkResetAchievements } from './achievements'
 
 /**重置选项 */

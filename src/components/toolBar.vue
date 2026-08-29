@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { pause, tick } from '@/core'
+import { pause, tick } from '@/app/core'
 import { player } from '@/data/player'
 import { hasKnowledge } from '@/compute/knowledge'
-import { doLoad, doSave } from '@/saveActions'
-import { cycleBoost } from '@/uiActions'
-import { executeCommand } from '@/commandRunner'
+import { doLoad, doSave } from '@/app/saveActions'
+import { cycleBoost } from '@/app/uiActions'
+import { executeCommand } from '@/app/commandRunner'
 
 /**指令输入框内容 */
 const cmdText = ref('')

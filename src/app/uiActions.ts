@@ -5,8 +5,8 @@ import { getLayerName, isChallengeActive } from '@/access'
 import { formatWhole } from '@/tools/format'
 import { resetGain } from '@/compute/prestige'
 import { doReset, resetRunWithoutGain } from '@/logic/reset'
-import { openConfirm } from '@/dialog'
-import { settings } from '@/settings'
+import { openConfirm } from '@/app/dialog'
+import { settings } from '@/app/settings'
 import { getBoostPresets } from '@/compute/knowledge'
 
 /**重置当前所选层级(带设置里的二次确认,与层级页按钮同一流程) */
