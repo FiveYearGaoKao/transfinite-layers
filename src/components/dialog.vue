@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
   currentDialog,
   closeDialog,
@@ -7,7 +7,7 @@ import {
   type QuizDialogOptions,
   type SlotDialogOptions,
 } from '@/app/dialog'
-import { getSlotSummaries, type SlotSummary } from '@/save/save'
+import { getCurrentSlot, getSlotSummaries, type SlotSummary } from '@/save/save'
 import { getAchievementCount } from '@/logic/achievements'
 import { format, formatTime } from '@/tools/format'
 
@@ -21,6 +21,11 @@ const confirmOptions = computed<ConfirmDialogOptions | undefined>(() =>
     ? (currentDialog.value.options as ConfirmDialogOptions)
     : undefined,
 )
+/**确认框文字(支持函数形式,以便随游戏状态实时更新,如重置收益随时间变化) */
+const confirmText = computed(() => {
+  const t = confirmOptions.value?.text
+  return typeof t == 'function' ? t() : (t ?? '')
+})
 /**答题框选项 */
 const quizOptions = computed<QuizDialogOptions | undefined>(() =>
   currentDialog.value?.kind == 'quiz'
@@ -35,6 +40,15 @@ const slotOptions = computed<SlotDialogOptions | undefined>(() =>
 )
 /**答题输入框的答案 */
 const quizAnswer = ref('')
+/**答题输入框元素(填空题弹出时聚焦) */
+const quizInput = ref<HTMLInputElement>()
+//答题框弹出时,若为填空题则将光标聚焦到文本输入框
+watch(currentDialog, async (d) => {
+  if (d?.kind == 'quiz' && !(d.options as QuizDialogOptions).options?.length) {
+    await nextTick()
+    quizInput.value?.focus()
+  }
+})
 /**全部存档槽位的摘要(对话框打开时实时读取) */
 const summaries = computed<SlotSummary[]>(() => (slotOptions.value ? getSlotSummaries() : []))
 /**成就总数(用于摘要显示) */
@@ -60,7 +74,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     <!-- 确认框 -->
     <div v-if="isConfirm" class="panel">
       <span class="text bold title">{{ confirmOptions?.title }}</span>
-      <span class="text content">{{ confirmOptions?.text }}</span>
+      <span class="text content">{{ confirmText }}</span>
       <div class="row buttons">
         <button class="subTab" @click="closeDialog(false)">
           {{ confirmOptions?.cancelText ?? '取消' }}
@@ -85,7 +99,12 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
         </button>
       </template>
       <template v-else>
-        <input v-model="quizAnswer" class="quizInput" @keydown.enter="closeDialog(quizAnswer)" />
+        <input
+          ref="quizInput"
+          v-model="quizAnswer"
+          class="quizInput"
+          @keydown.enter="closeDialog(quizAnswer)"
+        />
         <div class="row buttons">
           <button class="subTab" @click="closeDialog(null)">取消</button>
           <button class="subTab affordable" @click="closeDialog(quizAnswer)">提交</button>
@@ -95,8 +114,14 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     <!-- 存档槽位选择框 -->
     <div v-else class="panel slotsPanel">
       <span class="text bold title">{{ slotOptions?.title }}</span>
-      <button v-for="s in summaries" :key="s.slot" class="slotRow" @click="closeDialog(s.slot)">
+      <button
+        v-for="s in summaries"
+        :key="s.slot"
+        :class="['slotRow', s.slot == getCurrentSlot() ? 'current' : '']"
+        @click="closeDialog(s.slot)"
+      >
         <span class="text slotLabel">槽位 {{ s.slot + 1 }}</span>
+        <span v-if="s.slot == getCurrentSlot()" class="text slotCurrent">当前</span>
         <span class="text slotInfo" :class="{ empty: !s.exists }">{{ slotText(s) }}</span>
       </button>
       <button class="subTab" @click="closeDialog(null)">取消</button>
@@ -162,6 +187,9 @@ button.slotRow {
   gap: 12px;
   padding: 6px 10px;
 }
+button.slotRow.current {
+  border-color: var(--accent);
+}
 button.slotRow:hover:not(:disabled) {
   background-color: var(--selected-bg);
 }
@@ -170,5 +198,9 @@ span.slotInfo {
 }
 span.slotInfo.empty {
   color: var(--faint);
+}
+span.slotCurrent {
+  color: var(--accent);
+  font-size: 12px;
 }
 </style>

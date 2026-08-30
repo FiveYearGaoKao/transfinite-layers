@@ -22,7 +22,7 @@ import {
   type EffectDef,
   type RegisteredEffect,
 } from './effects'
-import { U1_POINTS_EXPONENT } from '@/data/constants'
+import { DIMENSION_COUNT, U1_POINTS_EXPONENT } from '@/data/constants'
 
 /**u3额外加速器:本层已购维度总等级×0.2 + 已购升级数量 */
 const FREE_LEVEL_FACTOR = 0.2
@@ -60,7 +60,7 @@ export const UPGRADES: UpgradeDef[] = [
   {
     id: 1,
     name: '点数作用',
-    description: '根据本层点数，加成下层点数获取',
+    description: '根据本层点数，加成{prevLayer}点数获取',
     order: 0,
     cost(): Decimal {
       return new Decimal(getBase())
@@ -79,7 +79,7 @@ export const UPGRADES: UpgradeDef[] = [
       },
     },
     effectText(layer: LayerId): string {
-      return `下层点数获取 x${format(u1Formula(getPoints(layer), u1Exponent()))}`
+      return `x${format(u1Formula(getPoints(layer), u1Exponent()))}`
     },
     isUnlocked: (layer: LayerId) => !isLayer0(layer),
   },
@@ -95,7 +95,17 @@ export const UPGRADES: UpgradeDef[] = [
       target: 'dimensionMult',
       type: 'mul',
       value: (ctx) => dimensionAmount(ctx.pos, ctx.id, 1).add(1),
-      text: '维度产量 x(该维度已购+1)',
+    },
+    //自协同对不同维度的加成数值不同,效果行显示当前数值范围(最小值~最大值)而非单一值
+    effectText(layer: LayerId): string {
+      let lo = new Decimal(Infinity)
+      let hi = new Decimal(0)
+      for (let i = 0; i < DIMENSION_COUNT; i++) {
+        const v = dimensionAmount(layer, i, 1).add(1)
+        lo = Decimal.min(lo, v)
+        hi = Decimal.max(hi, v)
+      }
+      return `x${format(lo)}~x${format(hi)}`
     },
     isUnlocked: (_layer: LayerId) => true,
   },
@@ -115,14 +125,14 @@ export const UPGRADES: UpgradeDef[] = [
         if (!L) return 0
         return dimensionTotalBought(ctx.pos).mul(FREE_LEVEL_FACTOR).add(L.upgrades.length).floor()
       },
-      text: '当前: +{value}',
+      text: '+{value}',
     },
     isUnlocked: (_layer: LayerId) => hasAchievement('a16'),
   },
   {
     id: 4,
     name: '自动化1',
-    description: '解锁层级k-1维度自动购买',
+    description: '解锁{prevLayer}维度自动购买',
     order: 0,
     cost(): Decimal {
       return new Decimal(getBase()).pow(2)
@@ -132,7 +142,7 @@ export const UPGRADES: UpgradeDef[] = [
   {
     id: 5,
     name: '自动化2',
-    description: '解锁层级k-1加速器和加倍器自动购买',
+    description: '解锁{prevLayer}加速器和加倍器自动购买',
     order: 0,
     cost(): Decimal {
       return new Decimal(getBase()).pow(2).mul(3)
@@ -143,7 +153,7 @@ export const UPGRADES: UpgradeDef[] = [
   {
     id: 6,
     name: '自动重置',
-    description: '解锁层级k自动重置',
+    description: '解锁{currentLayer}自动重置',
     order: 0,
     cost(): Decimal {
       return new Decimal(getBase()).pow(3)
@@ -183,7 +193,7 @@ export const UPGRADES: UpgradeDef[] = [
     isUnlocked: (layer: LayerId) => compareLayer(layer, [2]) >= 0,
     requires: [8],
     effectText(layer) {
-      return `当前: +${format(getLayer(prevLayer(layer))?.bestPoints ?? new Decimal(0))}/s`
+      return `+${format(getLayer(prevLayer(layer))?.bestPoints ?? new Decimal(0))}/s`
     },
   },
 ]
@@ -243,10 +253,10 @@ for (const u of UPGRADES) {
   if (e) registerEffect(e)
 }
 
-/**某升级的效果文字(自定义优先,否则从效果自动生成;无数值效果时显示购买状态,避免与描述重复) */
-export function upgradeEffectText(def: UpgradeDef, layer: LayerId): string {
+/**某升级的效果文字(裸值,不含"当前:"前缀;前缀由升级按钮组件统一添加) */
+export function upgradeEffectValue(def: UpgradeDef, layer: LayerId): string {
   if (def.effectText) return def.effectText(layer)
   const e = upgradeEffect(def)
   if (e) return effectText(e, { pos: layer, id: 0 })
-  return hasUpgrade(layer, def.id) ? '当前:已解锁' : '当前:未解锁'
+  return hasUpgrade(layer, def.id) ? '已解锁' : '未解锁'
 }

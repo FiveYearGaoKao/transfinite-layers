@@ -17,11 +17,11 @@
   --dim-odd-bg: #333333;
   --dim-even-bg: #777777;
   --input-bg: #101010;
-  --meta-border: #c060e0;
-  --meta-text: #e0a0f0;
-  --meta-strong: #f0d0ff;
-  --meta-bg: #603060;
-  --meta-hover: #503050;
+  --meta-border: #f08050;
+  --meta-text: #f0a070;
+  --meta-strong: #f0f0d0;
+  --meta-bg: #906030;
+  --meta-hover: #805030;
   --good-border: #3fcf3f;
   --good-bg: #005f00;
   --good-hover: #007f00;
@@ -135,6 +135,11 @@ button {
 }
 button:disabled {
   cursor: not-allowed;
+}
+/*层级切换时临时禁用过渡动画(切换只是改了层级id,不同层级不应共享动画)*/
+.noTransition,
+.noTransition * {
+  transition: none !important;
 }
 button:hover:not(:disabled) {
   background-color: var(--hover);

@@ -1,14 +1,26 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { logs, clearLogs } from '@/app/log'
 import { settings } from '@/app/settings'
 
 /**按设置过滤后的日志 */
 const filteredLogs = computed(() => logs.filter((l) => settings.logFilter[l.type]))
+/**日志列表元素(用于自动滚动) */
+const logListEl = ref<HTMLElement>()
+//新增可见日志时自动滚动到底部,让玩家能看见最新日志
+watch(
+  () => filteredLogs.value.length,
+  () => {
+    nextTick(() => {
+      const el = logListEl.value
+      if (el) el.scrollTop = el.scrollHeight
+    })
+  },
+)
 </script>
 <template>
   <div id="logBar">
-    <div id="logList">
+    <div id="logList" ref="logListEl">
       <div v-for="item in filteredLogs" :key="item.id" class="logItem">
         <span style="color: var(--dim)">[{{ new Date(item.time).toLocaleTimeString() }}]</span>
         <span :class="item.type">{{ item.text }}</span>

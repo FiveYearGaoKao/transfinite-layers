@@ -1,19 +1,30 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { pause, tick } from '@/app/core'
 import { player } from '@/data/player'
 import { hasKnowledge } from '@/compute/knowledge'
 import { doLoad, doSave } from '@/app/saveActions'
 import { cycleBoost } from '@/app/uiActions'
 import { executeCommand } from '@/app/commandRunner'
+import { setCommandFocusHandler } from '@/app/commandFocus'
 
 /**指令输入框内容 */
 const cmdText = ref('')
+/**指令输入框元素 */
+const cmdInput = ref<HTMLInputElement>()
 /**执行指令并清空输入框 */
 function runCommand() {
   if (cmdText.value.trim()) executeCommand(cmdText.value)
   cmdText.value = ''
 }
+//注册"/"快捷键的聚焦处理:填入"/"并聚焦到指令输入框
+onMounted(() =>
+  setCommandFocusHandler(() => {
+    cmdText.value = '/'
+    nextTick(() => cmdInput.value?.focus())
+  }),
+)
+onUnmounted(() => setCommandFocusHandler(null))
 </script>
 <template>
   <div id="toolBar">
@@ -23,12 +34,13 @@ function runCommand() {
       :title="player.paused ? '恢复(需购买知识升级:暂停功能)' : '暂停(需购买知识升级:暂停功能)'"
       @click="pause()"
     >
+      <!--按钮显示"点击后执行的动作":运行时显示暂停图标,暂停时显示播放图标-->
       <svg v-if="!player.paused" viewBox="0 0 16 16" width="20" height="20" fill="currentColor">
-        <path d="M3 2 L13 8 L3 14 Z" />
-      </svg>
-      <svg v-else viewBox="0 0 16 16" width="20" height="20" fill="currentColor">
         <rect x="3" y="2" width="3.5" height="12" rx="1" />
         <rect x="9.5" y="2" width="3.5" height="12" rx="1" />
+      </svg>
+      <svg v-else viewBox="0 0 16 16" width="20" height="20" fill="currentColor">
+        <path d="M3 2 L13 8 L3 14 Z" />
       </svg>
     </button>
     <button
@@ -67,6 +79,7 @@ function runCommand() {
     </button>
     <input
       v-if="hasKnowledge('command-checkin')"
+      ref="cmdInput"
       v-model="cmdText"
       class="commandInput"
       placeholder="/指令"

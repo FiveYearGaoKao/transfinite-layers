@@ -10,7 +10,7 @@ import { NEWS_COUNT } from '@/app/news'
 import { buildGlobalNodes, buildLayerNodes, type StatNode } from '@/compute/statistics'
 import LayerSelect from './layerSelect.vue'
 import StatTree from './statTree.vue'
-import { importSaveString, exportSaveString, localSave } from '@/save/save'
+import { importSaveString, exportSaveString, getCurrentSlot, localSave } from '@/save/save'
 import { settings, saveSettings, cycleTheme, THEMES, type Settings } from '@/app/settings'
 import { temp } from '@/app/temp'
 import { type logType, addLog } from '@/app/log'
@@ -284,6 +284,9 @@ const activeLayers = computed(() =>
       </div>
       <div class="section">
         <span class="text bold">存档</span>
+        <div class="row">
+          <span class="text">当前存档槽位: {{ getCurrentSlot() + 1 }}</span>
+        </div>
         <div class="row">
           <button @click="doManualSave()">手动保存</button>
           <button @click="doSave()">存档</button>

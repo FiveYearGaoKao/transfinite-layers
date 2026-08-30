@@ -8,6 +8,7 @@ import { canReset } from '@/compute/prestige'
 import { doLoad, doSave } from '@/app/saveActions'
 import { cycleBoost, resetLayerConfirm } from '@/app/uiActions'
 import { cycleCurrentSubtab, cycleLayer, mainTabsList } from '@/app/navigation'
+import { focusCommandInput } from '@/app/commandFocus'
 
 /**全局按键处理 */
 function onKeydown(e: KeyboardEvent) {
@@ -62,6 +63,13 @@ function onKeydown(e: KeyboardEvent) {
     case 'b':
     case 'B':
       cycleBoost()
+      return
+    case '/':
+      //工具栏显示时聚焦指令输入框并输入"/"(指令输入框未挂载时无效果)
+      if (settings.showToolBar) {
+        e.preventDefault()
+        focusCommandInput()
+      }
       return
   }
 }

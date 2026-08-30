@@ -345,7 +345,7 @@ const normalAchievements: AchievementDef[] = [
     name: '无限!',
     description: '拥有至少1.79e308层级0点数',
     reward: 99,
-    isCompleted: () => getPoints([0]).gte(Decimal.dNumberMax),
+    isCompleted: () => getPoints([0]).gte(Number.MAX_VALUE),
   },
 ]
 
@@ -357,7 +357,7 @@ const secretAchievements: AchievementDef[] = [
     description: '点击滚动新闻中的rickroll超链接',
     secret: true,
     reward: 1,
-    isCompleted: () => player.secretFlags.includes('rickroll'),
+    isCompleted: () => hasAchievement('s11'),
   },
   {
     id: 's12',
@@ -378,10 +378,10 @@ const secretAchievements: AchievementDef[] = [
   {
     id: 's14',
     name: '你是认真的?',
-    description: '随机到问题"1+1=?"并回答错误',
+    description: '随机到问题"1 + 1"并回答错误',
     secret: true,
     reward: 1,
-    isCompleted: () => player.secretFlags.includes('quiz-fail'),
+    isCompleted: () => hasAchievement('s14'),
   },
   {
     id: 's15',
@@ -389,7 +389,7 @@ const secretAchievements: AchievementDef[] = [
     description: '尝试导入修改过的存档',
     secret: true,
     reward: 1,
-    isCompleted: () => player.secretFlags.includes('cheater'),
+    isCompleted: () => hasAchievement('s15'),
   },
   {
     id: 's16',
@@ -397,7 +397,7 @@ const secretAchievements: AchievementDef[] = [
     description: '连续切换主题100次,相邻两次间隔不超过1秒',
     secret: true,
     reward: 1,
-    isCompleted: () => player.secretFlags.includes('theme-spam'),
+    isCompleted: () => hasAchievement('s16'),
   },
 ]
 
@@ -434,6 +434,13 @@ function unlockAchievement(def: AchievementDef) {
   player.achievements.push(def.id)
   player.knowledge = player.knowledge.add(def.reward)
   addLog('progress', `已解锁成就：${def.name}`)
+}
+
+/**按id直接解锁一个成就(触发型隐藏成就用;发放知识奖励并写日志) */
+export function unlockAchievementById(id: string) {
+  if (player.achievements.includes(id)) return
+  const def = getAchievements().find((a) => a.id == id)
+  if (def) unlockAchievement(def)
 }
 
 /**把成就定义转换为注册效果(解锁后全局生效) */

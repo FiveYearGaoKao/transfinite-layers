@@ -21,7 +21,8 @@ export interface Layer {
 }
 export type LayerList = Record<string, Layer | null>
 export type LayerId = number[]
-export type _Layer = number[] | Layer | undefined
+/**层级的引用:层级坐标或层级对象;需要接受undefined的调用处显式写"LayerRef | undefined" */
+export type LayerRef = LayerId | Layer
 /**初始化一个层级的维度*/
 export function initializeDimensions(layer: Layer) {
   layer.dimensions = []
@@ -105,8 +106,8 @@ export interface AutomationDef<T extends AutoConfig = AutoConfig> {
   onTick(pos: LayerId, cfg: T): void
 }
 /**创建默认的自动购买配置 */
-export function defaultAutoBuy(): AutoBuyConfig {
-  return { enabled: false, priority: 1, order: 'asc', percent: 50, buyAmount: 'one', perItem: {} }
+export function defaultAutoBuy(priority: number = 1): AutoBuyConfig {
+  return { enabled: false, priority, order: 'asc', percent: 50, buyAmount: 'one', perItem: {} }
 }
 /**创建默认的自动重置配置 */
 export function defaultAutoReset(): AutoResetConfig {

@@ -2,7 +2,8 @@
 import { formatWhole } from '@/tools/format'
 import type { LayerId } from '@/data/types'
 import type { UpgradeDef } from '@/compute/upgrades'
-import { canBuyUpgrade, hasUpgrade, upgradeCost, upgradeEffectText } from '@/compute/upgrades'
+import { canBuyUpgrade, hasUpgrade, upgradeCost, upgradeEffectValue } from '@/compute/upgrades'
+import { renderLayerPlaceholders } from '@/compute/effects'
 import { buyUpgrade } from '@/logic/purchase'
 import { isAutoItem } from '@/logic/automations'
 
@@ -26,8 +27,8 @@ const autoOn = () => isAutoItem(props.pos, 'upgrades', props.def.id)
     @click="buyUpgrade(props.pos, props.def.id)"
   >
     <span class="text bold">{{ props.def.name }}</span>
-    <span class="text">{{ props.def.description }}</span>
-    <span class="text">{{ upgradeEffectText(props.def, props.pos) }}</span>
+    <span class="text">{{ renderLayerPlaceholders(props.def.description, props.pos) }}</span>
+    <span class="text">当前: {{ upgradeEffectValue(props.def, props.pos) }}</span>
     <span class="text" v-if="!hasUpgrade(props.pos, props.def.id)">
       价格: {{ formatWhole(upgradeCost(props.pos, props.def.id)) }}
     </span>
@@ -37,6 +38,13 @@ const autoOn = () => isAutoItem(props.pos, 'upgrades', props.def.id)
 <style scoped>
 button.upgrade {
   position: relative;
+  /*升级文字较多,缩小字号避免拥挤(玩家反馈);.text全局为14px,须直接作用到span上*/
+}
+button.upgrade span.text {
+  font-size: 12px;
+}
+button.upgrade span.text.bold {
+  font-size: 13px;
 }
 button.upgrade.auto {
   border-color: var(--accent);

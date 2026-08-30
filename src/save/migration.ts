@@ -2,6 +2,7 @@
 //职责:对旧存档做"数据转换"(如重命名、重算字段),而不是补默认字段
 //补字段由 initializeSave + Object.assign 负责,迁移只处理需要变换的数据
 //注意:迁移函数运行在无默认值的原始存档对象上,必须自包含,不能假设字段已存在
+import Decimal from 'break_eternity.js'
 import type { Player } from '@/data/player'
 import { versionComp } from '@/tools/utils'
 
@@ -25,3 +26,47 @@ export function migrate(save: Player): void {
     }
   }
 }
+
+//------ v0.1.0 → v0.1.1 ------
+/**隐藏成就触发标记到成就id的映射 */
+const SECRET_FLAG_ACHIEVEMENTS: Record<string, string> = {
+  rickroll: 's11',
+  'quiz-fail': 's14',
+  cheater: 's15',
+  'theme-spam': 's16',
+}
+
+/**普通挑战互斥:多激活时只保留编号最大的一个(如c5);非"c+数字"的id(如未来的元层挑战)原样保留 */
+function keepLargestNormalChallenge(active: string[]): string[] {
+  const normals = active.filter((id) => /^c\d+$/.test(id))
+  if (normals.length <= 1) return active
+  const rest = active.filter((id) => !/^c\d+$/.test(id))
+  let best = normals[0] ?? ''
+  for (const id of normals) {
+    if (parseInt(id.slice(1)) > parseInt(best.slice(1))) best = id
+  }
+  return [...rest, best]
+}
+
+migrations.push({
+  from: 'v0.1.0',
+  to: 'v0.1.1',
+  apply(save) {
+    //隐藏成就标记迁移:有secretFlag即视为达成(每帧成就检查至多1/30s时差),直接解锁对应成就(奖励固定1知识),并清除该字段
+    const flags = (save as unknown as { secretFlags?: string[] }).secretFlags
+    if (Array.isArray(flags)) {
+      for (const f of flags) {
+        const id = SECRET_FLAG_ACHIEVEMENTS[f]
+        if (id && !save.achievements.includes(id)) {
+          save.achievements.push(id)
+          save.knowledge = (save.knowledge ?? new Decimal(0)).add(1)
+        }
+      }
+      delete (save as unknown as { secretFlags?: string[] }).secretFlags
+    }
+    //普通挑战互斥:多激活时只保留编号最大的一个
+    if (Array.isArray(save.activeChallenges)) {
+      save.activeChallenges = keepLargestNormalChallenge(save.activeChallenges)
+    }
+  },
+})

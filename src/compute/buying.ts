@@ -1,6 +1,7 @@
 //统一的购买数量计算
 //任何"可购买项"(维度/可购买)只需提供价格函数,即可复用总成本计算和最大购买数量
 import Decimal from 'break_eternity.js'
+import { maxSatisfying } from '@/tools/bisect'
 
 /**可购买项:提供价格函数 */
 export interface BuyableItem {
@@ -28,42 +29,12 @@ export function sumCost(item: BuyableItem, k: Decimal): Decimal {
   return total
 }
 
-/**二分的迭代上界，防止异常情况下无限循环 */
-const MAX_ITER = 1000
-
-/**在预算内最多可购买数量(倍增上界+二分+按边际成本分段修正,允许少量误差) */
+/**
+ * 在预算内最多可购买数量
+ * 由 maxSatisfying 在"高度域"二分求解:对数量本身二分需 O(log k) 次,
+ * 高度域二分至多约 129 次价格求值且不随答案数量级增长(旧实现的边际修正已无需保留)
+ * 总成本取 sumCost 的末项近似,故允许少量误差(与旧实现一致)
+ */
 export function maxBuyable(item: BuyableItem, budget: Decimal): Decimal {
-  const n0 = item.amount()
-  const sum = (k: Decimal) => sumCost(item, k)
-  //连第一个都买不起则返回0
-  if (sum(new Decimal(1)).gt(budget)) return new Decimal(0)
-  //倍增上界:从2开始平方,次数约为log2(log2(k))
-  let lo = new Decimal(0)
-  let hi = new Decimal(2)
-  let iter = 0
-  while (sum(hi).lte(budget) && iter++ < MAX_ITER) {
-    lo = hi
-    hi = hi.mul(hi)
-    if (hi.eq(lo)) break
-  }
-  //二分 [lo, hi]，触及Decimal精度极限时自然停止
-  iter = 0
-  while (hi.sub(lo).gt(1) && iter++ < MAX_ITER) {
-    const mid = lo.add(hi).div(2).floor()
-    if (mid.eq(lo) || mid.eq(hi)) break
-    if (sum(mid).lte(budget)) lo = mid
-    else hi = mid
-  }
-  //分段修正:二分只保证sumCost近似下的最优,用下一个价格的边际成本把剩余预算成块花掉,避免逐1累加
-  iter = 0
-  while (iter++ < MAX_ITER) {
-    if (sum(lo.add(1)).gt(budget)) break
-    const step = budget
-      .sub(sum(lo))
-      .div(item.cost(n0.add(lo)))
-      .floor()
-      .max(1)
-    lo = lo.add(step)
-  }
-  return lo
+  return maxSatisfying((k) => sumCost(item, k), budget)
 }

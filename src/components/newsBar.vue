@@ -2,7 +2,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { randomNews } from '@/app/news'
 import { settings } from '@/app/settings'
-import { unlockSecretFlag } from '@/access'
+import { unlockAchievementById } from '@/logic/achievements'
 
 const containerRef = ref<HTMLElement>()
 const textRef = ref<HTMLElement>()
@@ -10,7 +10,7 @@ const newsText = ref('')
 /**点击新闻内的超链接(rickroll)触发隐藏成就 */
 function onNewsClick(e: MouseEvent) {
   const target = e.target as HTMLElement
-  if (target.tagName == 'A') unlockSecretFlag('rickroll')
+  if (target.tagName == 'A') unlockAchievementById('s11')
 }
 /**新闻位置(px)，从右侧出现并不断左移 */
 const pos = ref(0)

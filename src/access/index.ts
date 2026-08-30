@@ -1,7 +1,7 @@
 //只读访问层级数据(以及少量写入维度的便捷函数)
 import Decimal, { type DecimalSource } from 'break_eternity.js'
 import { player } from '@/data/player'
-import { type Layer, type LayerId, type _Layer } from '@/data/types'
+import { type Layer, type LayerId, type LayerRef } from '@/data/types'
 import { formatWhole } from '@/tools/format'
 import {
   compareLayer,
@@ -49,16 +49,21 @@ export function getLayerName(pos: LayerId, hide: number = 0): string {
   return '层级' + layerNames.join(',')
 }
 
+/**层级选择矩阵中的一个按钮项 */
+export interface LayerRow {
+  pos: LayerId
+  name: string
+  selected: boolean
+}
+
 /**
  * 层级选择矩阵:以锚点层级为准,遍历layerDepth×base用shiftLayer生成按钮矩阵(含临时层)
  * 供层级选择组件(layerSelect)与快捷键层级循环(navigation)共用,保证两者永远一致
  */
-export function getLayerRows(
-  modelValue: LayerId,
-): { pos: LayerId; name: string; selected: boolean }[][] {
-  const rows: { pos: LayerId; name: string; selected: boolean }[][] = []
+export function getLayerRows(modelValue: LayerId): LayerRow[][] {
+  const rows: LayerRow[][] = []
   for (let i = player.layerDepth - 1; i >= 0; --i) {
-    const row: { pos: LayerId; name: string; selected: boolean }[] = []
+    const row: LayerRow[] = []
     for (let j = 0; j <= player.base; ++j) {
       const k = j < player.base ? j : -1
       const pos = shiftLayer(modelValue, i, k)
@@ -82,7 +87,7 @@ export function getEnergy(pos: LayerId): Decimal {
  * 获取某维度的数量
  * @param type 0表示总数，1表示购买数量
  */
-export function dimensionAmount(layer: _Layer, id: number, type: number = 0): Decimal {
+export function dimensionAmount(layer: LayerRef | undefined, id: number, type: number = 0): Decimal {
   if (layer instanceof Array) layer = getLayer(layer)
   return layer?.dimensions[id]?.[type] || new Decimal(0)
 }
@@ -90,13 +95,13 @@ export function dimensionAmount(layer: _Layer, id: number, type: number = 0): De
  * 增加某维度的数量
  * @param type 0表示总数，1表示购买数量
  */
-export function addAmount(layer: _Layer, id: number, amount: Decimal, type: number = 0) {
+export function addAmount(layer: LayerRef | undefined, id: number, amount: Decimal, type: number = 0) {
   if (layer instanceof Array) layer = getLayer(layer)
   const dim = layer?.dimensions[id]
   if (dim) dim[type] = dimensionAmount(layer, id, type).add(amount)
 }
 /**获取某层所有维度的已购买数量总和 */
-export function dimensionTotalBought(layer: _Layer): Decimal {
+export function dimensionTotalBought(layer: LayerRef | undefined): Decimal {
   const L = layer instanceof Array ? getLayer(layer) : layer
   if (!L) return new Decimal(0)
   let total = new Decimal(0)
@@ -107,7 +112,7 @@ export function dimensionTotalBought(layer: _Layer): Decimal {
   return total
 }
 /**获取某层所有可购买的已购买数量总和 */
-export function buyableTotalBought(layer: _Layer): Decimal {
+export function buyableTotalBought(layer: LayerRef | undefined): Decimal {
   const L = layer instanceof Array ? getLayer(layer) : layer
   if (!L) return new Decimal(0)
   let total = new Decimal(0)
@@ -205,16 +210,12 @@ export function registerNormalAchievement(id: string) {
 export function getUnlockedNormalAchievementCount(): number {
   return player.achievements.filter((id) => normalAchievements.has(id)).length
 }
-/**记录一个隐藏成就的解锁标记(对应操作触发时调用,如保存/清日志) */
-export function unlockSecretFlag(id: string) {
-  if (!player.secretFlags.includes(id)) player.secretFlags.push(id)
-}
 /**某挑战是否正在激活(可叠加) */
 export function isChallengeActive(id: string): boolean {
   return player.activeChallenges.includes(id)
 }
 /**挑战C4的价格偏移:购买任何东西都使价格视为多购买1次(偏移量=本层购买总数) */
-export function c4BoughtOffset(layer: _Layer, n: DecimalSource): Decimal {
+export function c4BoughtOffset(layer: LayerRef | undefined, n: DecimalSource): Decimal {
   if (!isChallengeActive('c4')) return new Decimal(n)
   return new Decimal(n).add(dimensionTotalBought(layer).add(buyableTotalBought(layer)))
 }

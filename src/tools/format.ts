@@ -36,6 +36,8 @@ export function format(x: DecimalSource, precision: number = 3): string {
   else if (xd.gte(1e6)) return sci(xd.mag, precision)
   else if (xd.gte(1000)) return xd.mag.toFixed(0)
   else if (xd.gte(0.001)) return xd.mag.toFixed(precision)
+  //0<x<0.001:用科学计数法提供更精确的表示,有效数字与precision一致(如precision=3→"1.23e-4")
+  else if (xd.gt(0)) return sci(xd.mag, Math.max(precision - 1, 0))
   return (0).toFixed(precision)
 }
 //格式化整数

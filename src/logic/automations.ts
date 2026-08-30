@@ -39,7 +39,7 @@ export const AUTOMATIONS: AutomationDef[] = [
   {
     id: 'buyables',
     name: '可购买自动化',
-    defaultCfg: () => defaultAutoBuy(),
+    defaultCfg: () => defaultAutoBuy(2),
     isUnlocked: (pos) => buyablesAutoUnlocked(pos),
     isActive: (cfg) => Object.values((cfg as AutoBuyConfig).perItem).some((v) => v),
     setAll: (pos, cfg, on) => {
@@ -63,7 +63,7 @@ export const AUTOMATIONS: AutomationDef[] = [
   {
     id: 'upgrades',
     name: '升级自动化',
-    defaultCfg: () => defaultAutoBuy(),
+    defaultCfg: () => defaultAutoBuy(4),
     isUnlocked: (pos) => autoUpgradeUnlocked(pos),
     isActive: (cfg) => Object.values((cfg as AutoBuyConfig).perItem).some((v) => v),
     setAll: (pos, cfg, on) => {
@@ -133,11 +133,7 @@ export function isAutoItem(
   return (getLayerAutomation(pos).cfgs[type] as AutoBuyConfig | undefined)?.perItem[id] === true
 }
 /**切换某层某维度/可购买/升级项的自动开关 */
-export function toggleAutoItem(
-  pos: LayerId,
-  type: 'dims' | 'buyables' | 'upgrades',
-  id: number,
-) {
+export function toggleAutoItem(pos: LayerId, type: 'dims' | 'buyables' | 'upgrades', id: number) {
   const cfg = getLayerAutomation(pos).cfgs[type] as AutoBuyConfig
   cfg.perItem[id] = !cfg.perItem[id]
 }

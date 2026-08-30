@@ -3,11 +3,11 @@ import Decimal from 'break_eternity.js'
 import { player } from '@/data/player'
 import { addLog } from '@/app/log'
 import { rng, seedInt } from '@/save/rng'
-import { unlockSecretFlag } from '@/access'
 import { hasKnowledge, knowledgeAmount } from '@/compute/knowledge'
 import { calculate } from '@/compute/effects'
 import { formatWhole } from '@/tools/format'
 import { generateMathQuestion, type QuizQuestion } from '@/tools/quiz'
+import { unlockAchievementById } from './achievements'
 import { randomBankQuestion } from './quizBank'
 
 /**基础答题奖励(知识) */
@@ -104,7 +104,7 @@ export function getQuizQuestion(): QuizQuestion {
 
 /**
  * 随机生成一道题:一定概率抽题库(机制/梗多选题),否则按难度分级生成数学题(见tools/quiz)
- * 难度分级封顶tier 3,奖励仍随"博学"升级等级继续乘算
+ * 难度分级为0~5共六个等级(封顶tier 5),奖励仍随"博学"升级等级继续乘算
  */
 export function createQuiz(): QuizQuestion {
   const d = quizDifficulty()
@@ -112,7 +112,7 @@ export function createQuiz(): QuizQuestion {
     const bank = randomBankQuestion()
     if (bank) return bank
   }
-  return generateMathQuestion(Math.min(d, 3), seedInt)
+  return generateMathQuestion(Math.min(d, 5), seedInt)
 }
 
 /**
@@ -136,7 +136,7 @@ export function submitQuizAnswer(
     return { correct, reward }
   }
   addLog('info', '答错了,再接再厉')
-  //把"1+1=?"答错触发隐藏成就"你是认真的?"
-  if (question.text == '1+1=?') unlockSecretFlag('quiz-fail')
+  //把"1 + 1"答错触发隐藏成就"你是认真的?"(tier0自然生成,无特殊分支)
+  if (question.text == '1 + 1') unlockAchievementById('s14')
   return { correct, reward: new Decimal(0) }
 }

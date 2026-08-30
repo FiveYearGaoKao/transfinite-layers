@@ -5,8 +5,8 @@ import { computed, reactive } from 'vue'
 export interface ConfirmDialogOptions {
   /**标题 */
   title: string
-  /**说明文字 */
-  text: string
+  /**说明文字;可为函数以随游戏状态实时更新(如重置收益随时间变化) */
+  text: string | (() => string)
   /**确认按钮文字 */
   confirmText?: string
   /**取消按钮文字 */

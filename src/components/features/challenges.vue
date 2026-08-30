@@ -82,11 +82,11 @@ function progressPercent(def: ChallengeDef): number {
         class="challenge"
         :class="{ active: isActive(def), locked: !isUnlocked(def) }"
       >
-        <span class="text bold name">{{ def.name }}</span>
+        <span class="text bold name">{{ def.name }}({{ formatWhole(completions(def)) }})</span>
         <span class="text">{{ def.description }}</span>
+        <span class="text">进入后重置: {{ getLayerName(def.resetTarget) }}</span>
         <span class="text reward">奖励: {{ def.rewardText }}</span>
         <span class="text rewardValue">当前: {{ challengeRewardValue(def) }}</span>
-        <span class="text">已完成 {{ formatWhole(completions(def)) }} 次</span>
         <div class="info">
           <span v-if="!isUnlocked(def)" class="text lockInfo">
             解锁条件: 达到{{ getLayerName(def.unlockLayer) }}
@@ -154,7 +154,7 @@ div.challenge {
   border: 2px solid var(--dim);
   padding: 6px;
   width: 240px;
-  height: 235px;
+  height: 240px;
   box-sizing: border-box;
   &.active {
     border-color: var(--good-border);

@@ -16,7 +16,9 @@ export async function resetLayerConfirm() {
     !settings.resetConfirm ||
     (await openConfirm({
       title: '重置确认',
-      text: `晋升并获得 ${formatWhole(resetGain(pos))} ${getLayerName(pos)}点数?\n这将重置下层进度。`,
+      //函数形式:游戏持续运行,确认框中的重置收益随时间实时更新
+      text: () =>
+        `晋升并获得 ${formatWhole(resetGain(pos))} ${getLayerName(pos)}点数?\n这将重置下层进度。`,
       confirmText: '确认重置',
       cancelText: '取消',
     }))

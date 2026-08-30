@@ -1,7 +1,7 @@
 //游戏中的常量
 
 export const gameName: string = 'TransfiniteLayers'
-export const gameVersion: string = 'v0.1.0'
+export const gameVersion: string = 'v0.1.1'
 /**允许导入的存档的最早创建时间(毫秒时间戳) */
 export const EARLIEST_SAVE_TIME: number = new Date('2026/8/21').getTime()
 /**存档槽位数量 */

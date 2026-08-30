@@ -83,9 +83,11 @@ export function doReset(
       const posh = highestActiveLayer(layer, n)
       const highestLevel = getLayer(posh)?.level || new Decimal(0)
       const idx = getLayerIndex(posh, n)
+      let realPos: LayerId
       if (idx < player.base - 1) {
         //直接将新层级加在原层级后面
-        player.layers[nextLayer(posh).toString()] = L || null
+        realPos = nextLayer(posh)
+        player.layers[realPos.toString()] = L || null
       } else {
         //后面的层级向前平移
         for (let i = Math.floor(player.base / 2); i < player.base - 1; i++) {
@@ -94,8 +96,11 @@ export function doReset(
           player.layers[pos1] = getLayer(pos2) || null
         }
         player.layers[posh.toString()] = L || null
+        realPos = posh.slice()
       }
       temp.tempLayers[layer.toString()] = initializeLayer(highestLevel.add(1))
+      //临时层级转变为普通层级后,跳转到转变后的层级,方便玩家在新层级购买等操作
+      player.layerSubtab = realPos
     }
   }
 }

@@ -1,7 +1,7 @@
 //设置(纯呈现偏好，独立于存档，存放在localStorage)
 import { reactive } from 'vue'
 import { gameName } from '@/data/constants'
-import { unlockSecretFlag } from '@/access'
+import { unlockAchievementById } from '@/logic/achievements'
 import { type logType } from '@/app/log'
 
 export type themeType = 'dark' | 'light'
@@ -102,7 +102,7 @@ export function cycleTheme() {
     const now = Date.now()
     themeSwitchStreak = now - lastThemeSwitch <= 1000 ? themeSwitchStreak + 1 : 1
     lastThemeSwitch = now
-    if (themeSwitchStreak >= 100) unlockSecretFlag('theme-spam')
+    if (themeSwitchStreak >= 100) unlockAchievementById('s16')
     settings.theme = next.id
     applyTheme()
     saveSettings()

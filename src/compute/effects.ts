@@ -3,6 +3,7 @@
 //管道两阶段:先组合各效果的槽位(base/amount),再按类型优先级合并主效果
 import Decimal, { type DecimalSource } from 'break_eternity.js'
 import type { LayerId } from '@/data/types'
+import { getLayerName, prevLayer } from '@/access'
 import { format } from '@/tools/format'
 
 /**加成作用的数值点 */
@@ -189,11 +190,18 @@ export function effectBreakdown(target: string, ctx: EffectContext, base: Decima
   return { total: calculate(target, ctx, base), parts }
 }
 
+/**渲染文本模板中的层级占位符:{prevLayer}为下层层级名,{currentLayer}为本层层级名 */
+export function renderLayerPlaceholders(template: string, pos: LayerId): string {
+  return template
+    .replaceAll('{prevLayer}', getLayerName(prevLayer(pos)))
+    .replaceAll('{currentLayer}', getLayerName(pos))
+}
+
 /**渲染效果文字模板 */
 export function renderText(template: string, e: RegisteredEffect, ctx: EffectContext): string {
   const base = e.base ? slotValue(e.base, ctx) : new Decimal(1)
   const amount = e.amount ? slotValue(e.amount, ctx) : new Decimal(1)
-  return template
+  return renderLayerPlaceholders(template, ctx.pos)
     .replaceAll('{value}', format(effectValue(e, ctx)))
     .replaceAll('{base}', format(base))
     .replaceAll('{basePercent}', format(base.sub(1).mul(100)))

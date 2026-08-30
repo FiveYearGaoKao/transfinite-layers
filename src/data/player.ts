@@ -46,8 +46,6 @@ export interface Player {
   layerDepth: number
   base: number
   achievements: string[]
-  /**隐藏成就的解锁标记(通过特定操作触发的隐藏成就) */
-  secretFlags: string[]
   knowledge: Decimal
   /**各知识升级的已购数量 */
   knowledgeUpgrades: Record<string, Decimal>
@@ -103,7 +101,6 @@ export function initializeSave(): Player {
     layerDepth: 1,
     base: INITIAL_BASE,
     achievements: [],
-    secretFlags: [],
     knowledge: new Decimal(0),
     knowledgeUpgrades: {},
     boostSpeed: new Decimal(DEFAULT_BOOST_SPEED),

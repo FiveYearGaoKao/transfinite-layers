@@ -15,6 +15,7 @@ import {
   isChallengeActive,
   prevLayer,
 } from '@/access'
+import { maxSatisfying } from '@/tools/bisect'
 import { compareLayer } from '@/tools/ordinal'
 import { softCapValue } from '@/tools/softCap'
 import { format } from '@/tools/format'
@@ -139,9 +140,15 @@ function challengeReset(def: ChallengeDef) {
   doReset(def.resetTarget, true, false, true)
 }
 
-/**进入一个挑战:加入激活列表并强制重置目标层 */
+/**进入一个挑战:普通挑战互斥(先退出其它已激活的普通挑战),再加入激活列表并强制重置目标层 */
 export function enterChallenge(def: ChallengeDef) {
   if (!isUnlocked(def) || isActive(def)) return
+  //普通挑战互斥:进入前退出其它已激活的普通挑战(重置目标层、弹日志、移除激活标记)
+  for (const other of getAllChallenges()) {
+    if (other.id != def.id && other.layer == 'normal' && isActive(other)) {
+      exitChallenge(other, false)
+    }
+  }
   player.activeChallenges.push(def.id)
   challengeReset(def)
   addLog('info', `进入挑战：${def.name}`)
@@ -163,25 +170,11 @@ export function completeChallenge(def: ChallengeDef) {
 }
 
 /**
- * 批量完成辅助(预留):给定目标资源量,二分求最多可完成的次数
- * 目标公式goal(k)单调递增,后续批量完成机制可直接套用
+ * 批量完成辅助:给定目标资源量,求最多可完成的次数
+ * 目标公式 goal(k) 单调递增,由 maxSatisfying 在高度域二分求解(至多约129次目标求值)
  */
 export function maxCompletions(def: ChallengeDef, resource: Decimal): Decimal {
-  const base = completions(def)
-  let lo = base
-  let hi = base.add(1)
-  let iter = 0
-  while (def.goal(hi).lte(resource) && iter++ < 2000) {
-    lo = hi
-    hi = hi.mul(2)
-  }
-  iter = 0
-  while (hi.sub(lo).gt(1) && iter++ < 2000) {
-    const mid = lo.add(hi).div(2).floor()
-    if (def.goal(mid).lte(resource)) lo = mid
-    else hi = mid
-  }
-  return lo
+  return maxSatisfying((k) => def.goal(k), resource, completions(def))
 }
 
 //------效果注册------

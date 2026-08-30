@@ -19,7 +19,7 @@ import { canReset, resetGain } from '@/compute/prestige'
 import { resetLayerConfirm, resetRunConfirm } from '@/app/uiActions'
 import { isChallengeActive } from '@/access'
 import { player } from '@/data/player'
-import { computed } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import BuyableItem from './buyableItem.vue'
 import UpgradeItem from './upgradeItem.vue'
 import LayerSelect from './layerSelect.vue'
@@ -27,6 +27,15 @@ import LayerSelect from './layerSelect.vue'
 const selectedLayer = computed(() => {
   return getLayer(player.layerSubtab)
 })
+/**是否临时禁用过渡动画(层级切换时升级等状态应立即变化,不应有动画) */
+const suppressTransition = ref(false)
+watch(
+  () => player.layerSubtab,
+  () => {
+    suppressTransition.value = true
+    nextTick(() => requestAnimationFrame(() => (suppressTransition.value = false)))
+  },
+)
 /**当前层能量给低层维度的加成数值 */
 const layerEnergyBonus = computed(() => energyBonus(player.layerSubtab))
 /**当前层级可显示的可购买 */
@@ -45,7 +54,7 @@ const upgradeList = computed(() =>
 const showResetRun = computed(() => isChallengeActive('c4') && !player.layerSubtab.includes(-1))
 </script>
 <template>
-  <div id="layers" style="height: 100%">
+  <div id="layers" :class="{ noTransition: suppressTransition }" style="height: 100%">
     <LayerSelect v-model="player.layerSubtab" />
     <div class="prestigeRow">
       <button

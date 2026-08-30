@@ -1,9 +1,11 @@
 //关于存档读取、导入的一些函数
 import Decimal from 'break_eternity.js'
+import { ref } from 'vue'
 import { compressToBase64, decompressFromBase64 } from 'lz-string'
 import { player, type Player, initializeSave } from '@/data/player'
 import { gameName, gameVersion, EARLIEST_SAVE_TIME, SAVE_SLOT_COUNT } from '@/data/constants'
-import { getLayer, unlockSecretFlag } from '@/access'
+import { getLayer } from '@/access'
+import { unlockAchievementById } from '@/logic/achievements'
 import { seedRng } from './rng'
 import { migrate } from './migration'
 import { checkCode, CHECKSUM_VERSION, CHECKSUM_SALT } from './checksum'
@@ -12,21 +14,22 @@ import { addLog } from '@/app/log'
 
 //------存档槽位------
 const CURRENT_SLOT_KEY = gameName + '-slot'
-let currentSlot = 0
+/**当前存档槽位(ref使UI可响应展示) */
+const currentSlot = ref(0)
 
 /**恢复上次使用的存档槽位(启动时调用) */
 export function loadSlotChoice() {
   const n = Number(localStorage.getItem(CURRENT_SLOT_KEY))
-  if (Number.isInteger(n) && n >= 0 && n < SAVE_SLOT_COUNT) currentSlot = n
+  if (Number.isInteger(n) && n >= 0 && n < SAVE_SLOT_COUNT) currentSlot.value = n
 }
 /**获取当前存档槽位 */
 export function getCurrentSlot(): number {
-  return currentSlot
+  return currentSlot.value
 }
 /**设置当前存档槽位并持久化 */
 export function setCurrentSlot(slot: number) {
   if (slot >= 0 && slot < SAVE_SLOT_COUNT) {
-    currentSlot = slot
+    currentSlot.value = slot
     localStorage.setItem(CURRENT_SLOT_KEY, String(slot))
   }
 }
@@ -158,7 +161,7 @@ function load(s: string): number {
     return 101
   } else if (versionComp(saveFile.version, CHECKSUM_VERSION) >= 0 && !verifySave(saveFile)) {
     addLog('error', '导入失败!存档疑似被修改过![错误代码:250]')
-    unlockSecretFlag('cheater')
+    unlockAchievementById('s15')
     return 250
   } else if (saveFile.lastPlay > Date.now()) {
     addLog('error', '导入失败!存档来自未来，加载它可能导致时空错乱![错误代码:301]')
@@ -190,11 +193,11 @@ function load(s: string): number {
   }
 }
 /**保存存档到本地存储 */
-export function localSave(slot: number = currentSlot) {
+export function localSave(slot: number = currentSlot.value) {
   localStorage.setItem(gameName + '-save' + slot, stringify())
 }
 /**从本地存储导入存档 */
-export function localLoad(slot: number = currentSlot): boolean {
+export function localLoad(slot: number = currentSlot.value): boolean {
   const s = localStorage.getItem(gameName + '-save' + slot)
   if (s == null) {
     return false
