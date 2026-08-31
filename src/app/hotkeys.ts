@@ -5,8 +5,9 @@ import { currentDialog } from '@/app/dialog'
 import { buyDimension } from '@/logic/purchase'
 import { toggleAllAuto, toggleLayerAuto } from '@/logic/automations'
 import { canReset } from '@/compute/prestige'
+import { canInfinityReset } from '@/compute/infinity'
 import { doLoad, doSave } from '@/app/saveActions'
-import { cycleBoost, resetLayerConfirm } from '@/app/uiActions'
+import { cycleBoost, infinityResetConfirm, resetLayerConfirm } from '@/app/uiActions'
 import { cycleCurrentSubtab, cycleLayer, mainTabsList } from '@/app/navigation'
 import { focusCommandInput } from '@/app/commandFocus'
 
@@ -46,6 +47,10 @@ function onKeydown(e: KeyboardEvent) {
     case 'r':
     case 'R':
       if (canReset(player.layerSubtab)) void resetLayerConfirm()
+      return
+    case 'i':
+    case 'I':
+      if (canInfinityReset()) void infinityResetConfirm()
       return
     case 's':
     case 'S':

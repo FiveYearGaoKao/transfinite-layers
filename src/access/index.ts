@@ -87,7 +87,11 @@ export function getEnergy(pos: LayerId): Decimal {
  * 获取某维度的数量
  * @param type 0表示总数，1表示购买数量
  */
-export function dimensionAmount(layer: LayerRef | undefined, id: number, type: number = 0): Decimal {
+export function dimensionAmount(
+  layer: LayerRef | undefined,
+  id: number,
+  type: number = 0,
+): Decimal {
   if (layer instanceof Array) layer = getLayer(layer)
   return layer?.dimensions[id]?.[type] || new Decimal(0)
 }
@@ -95,7 +99,12 @@ export function dimensionAmount(layer: LayerRef | undefined, id: number, type: n
  * 增加某维度的数量
  * @param type 0表示总数，1表示购买数量
  */
-export function addAmount(layer: LayerRef | undefined, id: number, amount: Decimal, type: number = 0) {
+export function addAmount(
+  layer: LayerRef | undefined,
+  id: number,
+  amount: Decimal,
+  type: number = 0,
+) {
   if (layer instanceof Array) layer = getLayer(layer)
   const dim = layer?.dimensions[id]
   if (dim) dim[type] = dimensionAmount(layer, id, type).add(amount)

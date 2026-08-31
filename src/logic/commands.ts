@@ -43,8 +43,7 @@ export function doCheckin(): { reward: Decimal; streak: number } | null {
   const consecutive = player.checkin.lastDay === dateString(-1)
   const streak = consecutive ? player.checkin.streak + 1 : 1
   const roll = seedInt(0, 101)
-  const highStreak =
-    consecutive && roll > 90 ? player.checkin.highStreak + 1 : roll > 90 ? 1 : 0
+  const highStreak = consecutive && roll > 90 ? player.checkin.highStreak + 1 : roll > 90 ? 1 : 0
   player.checkin = { lastDay: dateString(0), streak, highStreak }
   const reward = new Decimal(roll).add(10 * streak)
   player.knowledge = player.knowledge.add(reward)

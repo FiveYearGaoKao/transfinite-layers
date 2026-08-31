@@ -24,12 +24,15 @@
 | `pointsGain` | 点数获取(含层0软上限) | `dimensions`(层0维度1产量)/`prestige`(重置收益) |
 | `upgradeCost` | 升级价格 | (预留) |
 | `psdSpeed` | 全局速度 | `knowledge.getPsdSpeed` |
+| `infinityGain` | 无限点数获取 | `infinity.infinityGain`(基础公式经管道后向下取整) |
 
 > 注:`resetGain` 目标已移除,所有加成只作用于 `pointsGain`。层级0维度1的产量软上限(`layer0-softcap`)注册为 `pointsGain` 上的 `custom` 效果——`custom` 优先级最高,天然在所有乘法加成之后生效。
 
 除主数值点外,还有**子目标(槽位)**用于修饰公式参数:
 `energy:base`(能量指数)、`u1:base`(点数作用指数)、`b11:base`/`b11:amount`(加速器底数/等级)、
-`b12:quad`/`b12:base`/`b12:amount`(加倍器)、`softCap:base`(软上限阈值)。
+`b12:quad`/`b12:base`/`b12:amount`(加倍器)、`softCap:base`(软上限阈值)、
+`b12:costBase`(加倍器基础价格指数,默认2,iu22 降为0)、`b13:costMult`(加速器加成价格指数,默认4,iu41 降为3)、
+`a41:decay`(成就"逆流而上"的衰减速度,默认1,iu21 降为0.1)。
 
 ### 效果(Effect)
 一条加成的声明,注册时自动补充 `id`/`name`。
@@ -103,6 +106,7 @@ for (const u of UPGRADES) {
 | 成就 | `achievement-{id}` | 已解锁 |
 | 知识升级 | `knowledge-{id}` | 已购买至少1次 |
 | 挑战惩罚/奖励 | `challenge-{id}-penalty-{n}` / `-reward-{n}` | 激活中 / 完成次数>0 |
+| 无限升级 | `iu-{id}` | 已购买(可叠加自定义条件,如 iu32 仅挑战中、iu33 仅维度4) |
 
 ## 六、效果禁用与挑战
 

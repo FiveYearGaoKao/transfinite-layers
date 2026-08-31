@@ -30,6 +30,19 @@
   --bad-bg: #5f0000;
   --bad-hover: #7f0000;
   --softcap: #606080;
+  /*元层主题变量:无限(偏黄,类《反物质维度》)。每组同时应用于导航栏按钮(.mainTab.theme-*)与元层页面。
+    奇点(偏紫,宇宙)/树(RGB渐变或偏绿)/序数(纯黑白)留待对应元层落地时按同一模式添加 --singularity-* / --tree-* / --ordinal-* */
+  --infinity-bg: #1c1708;
+  --infinity-panel: #221c0c;
+  --infinity-text: #ffe9a8;
+  --infinity-dim: #d8c078;
+  --infinity-strong: #fff3c8;
+  --infinity-faint: #8a7a3a;
+  --infinity-selected-bg: #4a3f14;
+  --infinity-hover: #3a3210;
+  --infinity-selected-hover: #5a4f20;
+  --infinity-shadow: #c8b060;
+  --infinity-accent: #ffd700;
 }
 body.light {
   --bg: #f0f0f0;
@@ -58,6 +71,41 @@ body.light {
   --bad-bg: #f0c8c8;
   --bad-hover: #e0b0b0;
   --softcap: #9090b0;
+  /*元层主题变量的浅色变体(与全局浅色主题联动) */
+  --infinity-bg: #fffbe8;
+  --infinity-panel: #fff6d0;
+  --infinity-text: #5a4a10;
+  --infinity-dim: #8a7a3a;
+  --infinity-strong: #3a2f00;
+  --infinity-faint: #b0a060;
+  --infinity-selected-bg: #ffe9a8;
+  --infinity-hover: #fff0c0;
+  --infinity-selected-hover: #ffdf80;
+  --infinity-shadow: #c8b060;
+  --infinity-accent: #b58900;
+}
+/*元层页面独立配色(随全局深/浅主题自动切换):
+  把页面内的标准变量映射到 --infinity-* 主题变量,资源栏/工具栏/新闻/日志栏在页面之外,仍跟随全局主题。
+  奇点/树/序数元层落地时按同一模式添加 #singularity / #tree / #ordinal 映射块 */
+#infinity {
+  --bg: var(--infinity-bg);
+  --panel: var(--infinity-panel);
+  --text: var(--infinity-text);
+  --dim: var(--infinity-dim);
+  --strong: var(--infinity-strong);
+  --faint: var(--infinity-faint);
+  --selected-bg: var(--infinity-selected-bg);
+  --hover: var(--infinity-hover);
+  --selected-hover: var(--infinity-selected-hover);
+  --shadow: var(--infinity-shadow);
+  --accent: var(--infinity-accent);
+  --meta-border: var(--infinity-accent);
+  --meta-text: var(--infinity-dim);
+  --meta-strong: var(--infinity-strong);
+  --meta-bg: var(--infinity-selected-bg);
+  --meta-hover: var(--infinity-hover);
+  background-color: var(--infinity-bg);
+  color: var(--infinity-text);
 }
 body {
   background-color: var(--bg);
@@ -199,6 +247,22 @@ button.meta.selected {
 }
 button.meta:hover:not(:disabled) {
   background-color: var(--meta-hover);
+}
+/*元层导航按钮的独立主题(如无限=黄),样式类:theme-{元层id}。奇点/树/序数落地时按同一模式添加 */
+.mainTab.theme-infinity {
+  border-color: var(--infinity-accent);
+  color: var(--infinity-dim);
+}
+.mainTab.theme-infinity:hover:not(:disabled) {
+  background-color: var(--infinity-hover);
+}
+.mainTab.theme-infinity.selected {
+  border-color: var(--infinity-accent);
+  background-color: var(--infinity-selected-bg);
+  color: var(--infinity-strong);
+}
+.mainTab.theme-infinity.selected:hover:not(:disabled) {
+  background-color: var(--infinity-selected-hover);
 }
 /*按钮类型:决定大小与布局*/
 button.subTab {

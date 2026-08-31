@@ -42,11 +42,13 @@ const HOTKEY_HELP: { keys: string; desc: string }[] = [
   { keys: '← / →', desc: '层级页切换所选层级,其余页切换子标签' },
   { keys: 'Shift+1~4', desc: '购买当前层维度1~4' },
   { keys: 'R', desc: '重置当前层(受二次确认设置控制)' },
+  { keys: 'I', desc: '无限重置(点数达到1.79e308时可用)' },
   { keys: 'S', desc: '弹出存档对话框' },
   { keys: 'L', desc: '弹出读档对话框' },
   { keys: 'A', desc: '开关当前层自动化' },
   { keys: 'Shift+A', desc: '开关全部自动化' },
   { keys: 'B', desc: '循环切换加速倍率' },
+  { keys: '/', desc: '聚焦指令输入框并输入"/"' },
 ]
 
 /**导出存档 */
@@ -212,12 +214,6 @@ const activeLayers = computed(() =>
             主题：{{ themeName }}
           </button>
           <button
-            :class="['toggle', settings.hotkeys ? 'toggle-on' : 'toggle-off']"
-            @click="toggleSettings('hotkeys')"
-          >
-            快捷键：{{ settings.hotkeys ? '开' : '关' }}
-          </button>
-          <button
             :class="['toggle', settings.showToolBar ? 'toggle-on' : 'toggle-off']"
             @click="toggleSettings('showToolBar')"
           >
@@ -270,7 +266,24 @@ const activeLayers = computed(() =>
             :class="['toggle', settings.resetConfirm ? 'toggle-on' : 'toggle-off']"
             @click="toggleSettings('resetConfirm')"
           >
-            重置二次确认：{{ settings.resetConfirm ? '开' : '关' }}
+            普通重置:{{ settings.resetConfirm ? '开' : '关' }}
+          </button>
+          <button
+            :class="['toggle', settings.infinityResetConfirm ? 'toggle-on' : 'toggle-off']"
+            @click="toggleSettings('infinityResetConfirm')"
+          >
+            无限重置:{{ settings.infinityResetConfirm ? '开' : '关' }}
+          </button>
+        </div>
+      </div>
+      <div class="section">
+        <span class="text bold">其它</span>
+        <div class="row">
+          <button
+            :class="['toggle', settings.hotkeys ? 'toggle-on' : 'toggle-off']"
+            @click="toggleSettings('hotkeys')"
+          >
+            快捷键：{{ settings.hotkeys ? '开' : '关' }}
           </button>
           <button
             v-if="hasKnowledge('time-store')"

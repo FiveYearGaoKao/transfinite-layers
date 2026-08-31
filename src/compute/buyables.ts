@@ -60,9 +60,10 @@ export const BUYABLES: BuyableDef[] = [
     description: '点数获取x{base}，效果叠乘',
     order: 0,
     cost(_layer: LayerId, n: Decimal): Decimal {
-      //10^[n*(1+q*n)+2],q为b12:quad槽位(可被挑战C2奖励降低)
+      //10^[n*(1+q*n)+costBase],q为b12:quad槽位(可被挑战C2奖励降低),costBase为b12:costBase槽位(可被无限升级iu22降为0)
       const quad = slotValue({ target: 'b12:quad', init: () => 0.1 }, { pos: _layer, id: 0 })
-      return new Decimal(getBase()).pow(n.mul(n.mul(quad).add(1)).add(2)).floor()
+      const costBase = slotValue({ target: 'b12:costBase', init: () => 2 }, { pos: _layer, id: 0 })
+      return new Decimal(getBase()).pow(n.mul(n.mul(quad).add(1)).add(costBase)).floor()
     },
     effect: {
       target: 'pointsGain',
@@ -79,7 +80,9 @@ export const BUYABLES: BuyableDef[] = [
     order: 0,
     isUnlocked: (_layer: LayerId) => hasAchievement('a22'),
     cost(_layer: LayerId, n: Decimal): Decimal {
-      return new Decimal(getBase()).pow(new Decimal(2).pow(n).mul(4).mul(getBase()))
+      //base^(2^n * costMult * base),costMult为b13:costMult槽位(可被无限升级iu41由4降为3)
+      const costMult = slotValue({ target: 'b13:costMult', init: () => 4 }, { pos: _layer, id: 0 })
+      return new Decimal(getBase()).pow(new Decimal(2).pow(n).mul(costMult).mul(getBase()))
     },
     effect: {
       target: 'b11:base',

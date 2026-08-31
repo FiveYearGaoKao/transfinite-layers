@@ -235,7 +235,7 @@ const CHALLENGES: ChallengeDef[] = [
     resetTarget: [2],
     goal(k: Decimal): Decimal {
       //完成约9次后目标开始超指数增长(软上限),阻止无限刷挑战
-      return softCapValue(new Decimal(1e5).mul(new Decimal(100).pow(k)), new Decimal(1e24), 1.5)
+      return softCapValue(new Decimal(1e5).mul(new Decimal(100).pow(k)), new Decimal(1e24), 2, 1)
     },
     disableEffects: ['buyable-11'],
     rewardEffects: [
@@ -257,7 +257,7 @@ const CHALLENGES: ChallengeDef[] = [
     resetTarget: [2],
     goal(k: Decimal): Decimal {
       //完成约9次后目标开始超指数增长(软上限)
-      return softCapValue(new Decimal(1e5).mul(new Decimal(1000).pow(k)), new Decimal(1e32), 1.5)
+      return softCapValue(new Decimal(1e5).mul(new Decimal(1000).pow(k)), new Decimal(1e32), 2, 1)
     },
     disableEffects: ['buyable-12'],
     effects: [
@@ -313,7 +313,7 @@ const CHALLENGES: ChallengeDef[] = [
       {
         target: 'softCap:base',
         type: 'exp',
-        value: () => new Decimal(0.15).mul(challengeCompletions('c4')).add(1),
+        value: () => new Decimal(0.1).mul(challengeCompletions('c4')).add(1),
         text: '价格软上限阈值 ^{value}',
       },
     ],

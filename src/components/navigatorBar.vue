@@ -7,7 +7,12 @@ import { mainTabsList } from '@/app/navigation'
     <button
       v-for="tab in mainTabsList"
       :key="tab.id"
-      :class="{ mainTab: true, meta: tab.meta, selected: player.mainTab == tab.id }"
+      :class="[
+        'mainTab',
+        //元层标签使用独立主题类(如无限→theme-infinity),不再使用统一的--meta配色
+        tab.meta ? `theme-${tab.id}` : '',
+        { selected: player.mainTab == tab.id },
+      ]"
       @click="player.mainTab = tab.id"
     >
       {{ tab.name }}

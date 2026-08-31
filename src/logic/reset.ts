@@ -1,10 +1,17 @@
 //进行重置
 import Decimal from 'break_eternity.js'
 import { initializeDimensions, initializeLayer, type LayerId } from '@/data/types'
-import { getLayer, hasAchievement, highestActiveLayer, prevLayer } from '@/access'
+import {
+  getLayer,
+  getUnlockedNormalAchievementCount,
+  hasAchievement,
+  highestActiveLayer,
+  prevLayer,
+} from '@/access'
 import { getLayerIndex, getLayerOrder, isLayer0, nextLayer, shiftLayer } from '@/tools/ordinal'
 import { canReset, resetGain } from '@/compute/prestige'
 import { hasUpgrade } from '@/compute/upgrades'
+import { hasInfinityUpgrade } from '@/compute/infinity'
 import { player } from '@/data/player'
 import { temp } from '@/app/temp'
 import { checkResetAchievements } from './achievements'
@@ -17,6 +24,17 @@ interface ResetOptions {
   keepUpgrades?: boolean
 }
 
+/**某升级是否被无限升级保护(不会被普通层级重置;无限重置自身清空一切,不受此保护) */
+function upgradeProtectedByInfinity(id: number): boolean {
+  return (
+    (id == 4 && hasInfinityUpgrade('iu14')) ||
+    (id == 5 && hasInfinityUpgrade('iu24')) ||
+    (id == 6 && hasInfinityUpgrade('iu34')) ||
+    (id == 7 && hasInfinityUpgrade('iu44')) ||
+    (id == 8 && hasInfinityUpgrade('iu54'))
+  )
+}
+
 /**重置一个层级的数据(清除维度/升级/可购买等) */
 export function resetData(layer: LayerId, opts: ResetOptions = {}) {
   const L = getLayer(layer)
@@ -24,6 +42,9 @@ export function resetData(layer: LayerId, opts: ResetOptions = {}) {
     const keepUpgrades = opts.keepUpgrades ?? false
     let points = isLayer0(layer) ? new Decimal(1) : new Decimal(0)
     if (hasAchievement('a24')) points = Decimal.max(points, 1)
+    //无限升级iu31:普通层级重置后保留(当前解锁普通成就总量)的点数
+    if (hasInfinityUpgrade('iu31'))
+      points = Decimal.max(points, getUnlockedNormalAchievementCount())
     L.points = points
     L.totalPoints = new Decimal(0)
     L.bestPoints = new Decimal(0)
@@ -31,7 +52,8 @@ export function resetData(layer: LayerId, opts: ResetOptions = {}) {
     L.energy = new Decimal(0)
     L.resetTime = new Decimal(0)
     L.buyables = {}
-    if (!keepUpgrades) L.upgrades = []
+    //未保留下层升级时,仅保留被无限升级保护的升级(u4~u8),其余全部清空
+    if (!keepUpgrades) L.upgrades = L.upgrades.filter((u) => upgradeProtectedByInfinity(u))
     initializeDimensions(L)
   }
 }

@@ -59,6 +59,12 @@ export interface Player {
   challenges: Record<string, Decimal>
   /**当前激活的挑战(可叠加) */
   activeChallenges: string[]
+  /**无限点数(Infinity Points,元重置层"无限"的资源) */
+  infinityPoints: Decimal
+  /**无限重置次数 */
+  infinityResets: Decimal
+  /**已购买的无限升级id(如'iu11') */
+  infinityUpgrades: string[]
   /**挑战页当前子标签 */
   challengeTab: string
   /**签到数据:lastDay为最后签到日期(YYYY-MM-DD),streak为连续签到天数,highStreak为随机奖励>90的连续天数 */
@@ -108,6 +114,9 @@ export function initializeSave(): Player {
     automationUnlocked: false,
     challenges: {},
     activeChallenges: [],
+    infinityPoints: new Decimal(0),
+    infinityResets: new Decimal(0),
+    infinityUpgrades: [],
     challengeTab: 'normal',
     checkin: { lastDay: '', streak: 0, highStreak: 0 },
     quizLastAt: 0,

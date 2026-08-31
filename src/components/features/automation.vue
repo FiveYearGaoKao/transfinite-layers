@@ -99,9 +99,7 @@ function showAutoCard(def: { id: string }): boolean {
             <button
               v-if="hasKnowledge('auto-batch')"
               title="需知识升级:自动批量"
-              @click="
-                buyCfg(def.id).buyAmount = buyCfg(def.id).buyAmount == 'one' ? 'max' : 'one'
-              "
+              @click="buyCfg(def.id).buyAmount = buyCfg(def.id).buyAmount == 'one' ? 'max' : 'one'"
             >
               {{ buyCfg(def.id).buyAmount == 'one' ? '买1个' : '买最大' }}
             </button>
@@ -110,7 +108,10 @@ function showAutoCard(def: { id: string }): boolean {
             <button
               v-for="i in dimCount"
               :key="i"
-              :class="['toggle', isAutoItem(selectedPos, 'dims', i - 1) ? 'toggle-on' : 'toggle-off']"
+              :class="[
+                'toggle',
+                isAutoItem(selectedPos, 'dims', i - 1) ? 'toggle-on' : 'toggle-off',
+              ]"
               @click="toggleAutoItem(selectedPos, 'dims', i - 1)"
             >
               维度{{ i }}:{{ isAutoItem(selectedPos, 'dims', i - 1) ? '开' : '关' }}

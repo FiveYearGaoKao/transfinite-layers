@@ -29,8 +29,9 @@ const effectText = () => buyableEffectText(props.def, props.pos)
 <template>
   <div class="buyableItem">
     <div class="buyableInfo">
-      <span class="text name">{{ props.def.name }}({{ formatWhole(bought()) }}<template
-          v-if="free().gt(0)"
+      <span class="text name"
+        >{{ props.def.name }}({{ formatWhole(bought())
+        }}<template v-if="free().gt(0)"
           ><span class="freeLevel">+{{ formatWhole(free()) }}</span></template
         >)</span
       >

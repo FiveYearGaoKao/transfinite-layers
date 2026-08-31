@@ -17,10 +17,7 @@ export const migrations: Migration[] = []
 /**应用所有比当前版本更新的迁移 */
 export function migrate(save: Player): void {
   for (const m of migrations) {
-    if (
-      versionComp(save.version, m.from) >= 0 &&
-      versionComp(save.version, m.to) < 0
-    ) {
+    if (versionComp(save.version, m.from) >= 0 && versionComp(save.version, m.to) < 0) {
       m.apply(save)
       save.version = m.to
     }

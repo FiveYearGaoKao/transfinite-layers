@@ -34,7 +34,13 @@ const EGG_LINES = [
 ]
 
 /**set指令可修改的布尔设置键 */
-type BoolSettingKey = 'autoSave' | 'showLog' | 'showNews' | 'showToolBar' | 'resetConfirm' | 'hideMaxedKnowledge'
+type BoolSettingKey =
+  | 'autoSave'
+  | 'showLog'
+  | 'showNews'
+  | 'showToolBar'
+  | 'resetConfirm'
+  | 'hideMaxedKnowledge'
 const boolSettingKeys: Record<string, BoolSettingKey> = {
   autosave: 'autoSave',
   showlog: 'showLog',
@@ -72,7 +78,8 @@ const COMMANDS: CommandInfo[] = [
   {
     cmd: 'set',
     usage: '/set <键> <值>',
-    description: '修改设置(theme/autoSave/showLog/showNews/showToolBar/resetConfirm/hideMaxedKnowledge)',
+    description:
+      '修改设置(theme/autoSave/showLog/showNews/showToolBar/resetConfirm/hideMaxedKnowledge)',
     unlocked: () => true,
     run(args) {
       const [key, value] = args.trim().toLowerCase().split(/\s+/)

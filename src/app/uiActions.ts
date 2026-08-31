@@ -4,7 +4,9 @@ import { player } from '@/data/player'
 import { getLayerName, isChallengeActive } from '@/access'
 import { formatWhole } from '@/tools/format'
 import { resetGain } from '@/compute/prestige'
+import { canInfinityReset, infinityGain } from '@/compute/infinity'
 import { doReset, resetRunWithoutGain } from '@/logic/reset'
+import { doInfinityReset } from '@/logic/infinity'
 import { openConfirm } from '@/app/dialog'
 import { settings } from '@/app/settings'
 import { getBoostPresets } from '@/compute/knowledge'
@@ -36,6 +38,21 @@ export async function resetRunConfirm() {
     cancelText: '取消',
   })
   if (confirmed) resetRunWithoutGain(pos)
+}
+
+/**无限重置(带设置里的二次确认,与普通重置同一流程;确认框收益实时更新) */
+export async function infinityResetConfirm() {
+  if (!canInfinityReset()) return
+  const confirmed =
+    !settings.infinityResetConfirm ||
+    (await openConfirm({
+      title: '无限重置确认',
+      text: () =>
+        `将获得 ${formatWhole(infinityGain())} 无限点数,并删除除层级0外的所有层级、清空普通挑战记录。\n成就与知识不受影响,此操作无法撤销。`,
+      confirmText: '确认重置',
+      cancelText: '取消',
+    }))
+  if (confirmed) doInfinityReset()
 }
 
 /**循环切换加速倍率(在已解锁档位间轮转) */

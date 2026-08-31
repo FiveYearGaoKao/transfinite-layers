@@ -39,6 +39,8 @@ export interface Settings {
   knowledgeCategoryVisible: Record<string, boolean>
   /**普通重置前是否二次确认 */
   resetConfirm: boolean
+  /**无限重置前是否二次确认 */
+  infinityResetConfirm: boolean
   /**是否启用快捷键 */
   hotkeys: boolean
   /**资源栏显示的条目(键为资源id,见resourceRegistry) */
@@ -58,8 +60,16 @@ export function defaultSettings(): Settings {
     hideMaxedKnowledge: true,
     knowledgeCategoryVisible: {},
     resetConfirm: true,
+    infinityResetConfirm: true,
     hotkeys: true,
-    resourceBarItems: { highest: true, points: true, otherLayers: true, knowledge: true, challenge: true },
+    resourceBarItems: {
+      highest: true,
+      points: true,
+      otherLayers: true,
+      knowledge: true,
+      challenge: true,
+      infinity: true,
+    },
   }
 }
 

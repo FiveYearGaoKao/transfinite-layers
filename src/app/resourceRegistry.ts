@@ -1,7 +1,13 @@
 //资源栏条目注册表:显示哪些资源可在选项页自定义
 import { computed } from 'vue'
 import { format } from '@/tools/format'
-import { getActiveLayers, getEnergy, getHighestActiveLayer, getLayerName, getPoints } from '@/access'
+import {
+  getActiveLayers,
+  getEnergy,
+  getHighestActiveLayer,
+  getLayerName,
+  getPoints,
+} from '@/access'
 import { isLayer0 } from '@/tools/ordinal'
 import { player } from '@/data/player'
 import { getChallenge } from '@/logic/challenges'
@@ -22,7 +28,9 @@ export const RESOURCE_ITEMS: ResourceDef[] = [
     id: 'highest',
     label: '最高层级',
     resolve() {
-      return highestLayer.value ? [{ label: '最高层级', value: getLayerName(highestLayer.value) }] : []
+      return highestLayer.value
+        ? [{ label: '最高层级', value: getLayerName(highestLayer.value) }]
+        : []
     },
   },
   {
@@ -37,6 +45,15 @@ export const RESOURCE_ITEMS: ResourceDef[] = [
     label: '知识',
     resolve() {
       return player.knowledge.gt(0) ? [{ label: '知识', value: format(player.knowledge) }] : []
+    },
+  },
+  {
+    id: 'infinity',
+    label: '无限点数',
+    resolve() {
+      return player.infinityPoints.gt(0)
+        ? [{ label: '无限点数', value: format(player.infinityPoints) }]
+        : []
     },
   },
   {

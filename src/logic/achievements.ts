@@ -18,6 +18,7 @@ import { dimensionCost, dimensionMultiplier } from '@/compute/dimensions'
 import {
   effectValueById,
   registerEffect,
+  slotValue,
   type EffectDef,
   type RegisteredEffect,
 } from '@/compute/effects'
@@ -255,7 +256,13 @@ const normalAchievements: AchievementDef[] = [
     effect: {
       target: 'dimensionMult',
       type: 'mul',
-      value: (ctx) => new Decimal(10).root(new Decimal(getLayer(ctx.pos)?.resetTime || 0).add(1)),
+      //衰减速度经a41:decay槽位修饰(默认1,无限升级iu21将其降为0.1使衰减慢10倍)
+      value: (ctx) => {
+        const decay = slotValue({ target: 'a41:decay', init: () => 1 }, ctx)
+        return new Decimal(10).root(
+          new Decimal(getLayer(ctx.pos)?.resetTime || 0).mul(decay).add(1),
+        )
+      },
       text: '维度乘数 x{value}',
     },
     effectText: '所有维度产量x10，随重置时间迅速衰减',

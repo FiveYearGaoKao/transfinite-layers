@@ -83,7 +83,8 @@ function showTip(def: AchievementDef, e: MouseEvent) {
 
     <div v-else-if="subtab == 'secrets'">
       <span class="text"
-        >已解锁隐藏成就: {{ player.achievements.filter((id) => secretAchs.some((a) => a.id == id)).length }} /
+        >已解锁隐藏成就:
+        {{ player.achievements.filter((id) => secretAchs.some((a) => a.id == id)).length }} /
         {{ secretAchs.length }}</span
       >
       <div id="achievementList">

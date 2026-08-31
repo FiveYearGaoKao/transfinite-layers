@@ -15,6 +15,7 @@ export type EffectTarget =
   | 'pointsGain'
   | 'upgradeCost'
   | 'psdSpeed'
+  | 'infinityGain'
 
 /**计算加成时的上下文 */
 export interface EffectContext {
@@ -178,14 +179,22 @@ function applyEffect(e: RegisteredEffect, value: Decimal, ctx: EffectContext): D
 }
 
 /**按注册顺序应用某个数值点的所有加成 */
-export function calculate(target: string, ctx: EffectContext, base: Decimal = new Decimal(1)): Decimal {
+export function calculate(
+  target: string,
+  ctx: EffectContext,
+  base: Decimal = new Decimal(1),
+): Decimal {
   let value = base
   for (const e of getEffects(target)) value = applyEffect(e, value, ctx)
   return value
 }
 
 /**统计某个数值点:总效果与各生效来源明细(未生效的效果不列出) */
-export function effectBreakdown(target: string, ctx: EffectContext, base: Decimal = new Decimal(1)) {
+export function effectBreakdown(
+  target: string,
+  ctx: EffectContext,
+  base: Decimal = new Decimal(1),
+) {
   const parts = activeEffects(target, ctx).map((e) => ({ e, value: effectValue(e, ctx) }))
   return { total: calculate(target, ctx, base), parts }
 }

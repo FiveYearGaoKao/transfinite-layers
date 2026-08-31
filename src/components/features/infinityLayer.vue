@@ -1,21 +1,120 @@
 <script setup lang="ts">
-import { format } from '@/tools/format'
+import { computed } from 'vue'
+import { format, formatWhole } from '@/tools/format'
 import { getPoints } from '@/access'
+import { player } from '@/data/player'
+import { INFINITY_UNLOCK_POINTS } from '@/data/constants'
+import {
+  canInfinityReset,
+  getInfinityUpgrade,
+  infinityGain,
+  type InfinityUpgradeDef,
+} from '@/compute/infinity'
+import { infinityResetConfirm } from '@/app/uiActions'
+import InfinityUpgradeItem from './infinityUpgradeItem.vue'
+
+/**5x5升级表:行×列,未定义(建设中)的格子为null,显示占位格 */
+const iuGrid = computed<(InfinityUpgradeDef | undefined)[][]>(() =>
+  Array.from({ length: 5 }, (_, r) =>
+    Array.from({ length: 5 }, (_, c) => getInfinityUpgrade(`iu${r + 1}${c + 1}`)),
+  ),
+)
 </script>
 <template>
   <div id="infinity">
     <span class="text bold">无限</span>
-    <span class="text">你拥有 {{ format(getPoints([0])) }} 点数,终于触碰到 1.79e308。</span>
-    <span class="text">但 1.79e308 并不是真正的无限——它只是一个精度的终点。</span>
-    <span class="text">无限层正在建设中。进行第一次无限重置后,这里将解锁无限升级。</span>
+    <span class="text">
+      你拥有 <span class="text-highlight">{{ formatWhole(player.infinityPoints) }}</span> 无限点数
+      (IP)
+    </span>
+    <span class="text">已进行 {{ formatWhole(player.infinityResets) }} 次无限重置</span>
+    <div class="prestigeRow">
+      <button
+        :class="['prestige', 'meta', canInfinityReset() ? 'affordable' : '']"
+        :disabled="!canInfinityReset()"
+        @click="infinityResetConfirm()"
+      >
+        +{{ formatWhole(infinityGain()) }} 无限点数
+      </button>
+      <span class="text">(快捷键 I)</span>
+    </div>
+    <span v-if="!canInfinityReset()" class="text">
+      需要 {{ formatWhole(INFINITY_UNLOCK_POINTS) }} 层级0点数才能无限重置 (当前
+      {{ format(getPoints([0])) }})
+    </span>
+
+    <div id="infinityUpgrades">
+      <span class="sectionTitle">无限升级</span>
+      <div v-for="(row, r) in iuGrid" :key="r" class="iuRow">
+        <template v-for="(def, c) in row" :key="c">
+          <InfinityUpgradeItem v-if="def" :def="def" />
+          <button v-else class="upgrade placeholder" disabled>
+            <span class="text bold">???</span>
+            <span class="text">建设中</span>
+          </button>
+        </template>
+      </div>
+      <span class="text faint">
+        未写出的升级仍在建设中;同一列必须从上到下购买。价格与效果公式仍为占位,待测试调整。
+      </span>
+    </div>
   </div>
 </template>
 <style scoped>
+.text-highlight {
+  font-size: 18px;
+  color: var(--strong);
+  text-shadow: 1px 1px var(--shadow);
+}
 div#infinity {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
   padding: 8px;
+  min-height: 100%;
+  box-sizing: border-box;
+  background-color: var(--bg);
+}
+div.prestigeRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+div#infinityUpgrades {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+div.iuRow {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+span.sectionTitle {
+  font-size: 14px;
+  font-weight: bold;
+  color: var(--dim);
+  border-bottom: 1px solid var(--faint);
+  padding-bottom: 2px;
+}
+button.upgrade.placeholder {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+button.upgrade.placeholder span.text {
+  font-size: 12px;
+}
+button.upgrade.placeholder span.text.bold {
+  font-size: 13px;
+}
+span.faint {
+  color: var(--faint);
+  font-size: 12px;
 }
 </style>
