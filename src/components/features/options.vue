@@ -5,7 +5,7 @@ import { format, formatTime, formatWhole } from '@/tools/format'
 import { player } from '@/data/player'
 import type { LayerId } from '@/data/types'
 import { registerSubtabCycler, unregisterSubtabCycler } from '@/app/navigation'
-import { getActiveLayers, getLayerName } from '@/access'
+import { getActiveLayers, getLayerName, hasAchievement } from '@/access'
 import { NEWS_COUNT } from '@/app/news'
 import { buildGlobalNodes, buildLayerNodes, type StatNode } from '@/compute/statistics'
 import LayerSelect from './layerSelect.vue'
@@ -464,6 +464,12 @@ const activeLayers = computed(() =>
               player.checkin.lastDay || '从未'
             }}</span
           >
+        </div>
+        <div v-if="hasAchievement('a48')" class="section box left">
+          <span class="text bold">无限</span>
+          <span class="text">本次无限经历时间: {{ formatTime(player.infinityRunTime) }}</span>
+          <span class="text">无限重置最短时间: {{ formatTime(player.infinityBestResetTime) }}</span>
+          <span class="text">总无限点数: {{ format(player.totalInfinityPoints) }}</span>
         </div>
         <div class="section box left">
           <span class="text bold">层级资源</span>

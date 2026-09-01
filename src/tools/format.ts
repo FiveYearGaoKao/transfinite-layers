@@ -53,6 +53,7 @@ export function formatWhole(x: DecimalSource) {
 export function formatTime(x: DecimalSource): string {
   const xd = new Decimal(x)
   if (xd.eq(0)) return '0秒'
+  else if (!xd.isFinite()) return '永远'
   else if (xd.lt(0)) return '-' + formatTime(xd.neg())
   else if (xd.gte(3.1536e9)) return format(xd.div(31536000)) + '年'
   else {

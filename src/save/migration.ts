@@ -67,3 +67,15 @@ migrations.push({
     }
   },
 })
+
+//------ v0.1.1 → v0.1.2 ------
+migrations.push({
+  from: 'v0.1.1',
+  to: 'v0.1.2',
+  apply(save) {
+    //v0.1.2新增"本次无限经历的时间":旧档没有该字段时设为总游戏时间,使其从存档时刻起累计
+    //注:通过可选字段类型访问,避免TS对'in'操作符的收窄把分支类型推成never
+    const s = save as { infinityRunTime?: Decimal; totalTime: Decimal }
+    if (s.infinityRunTime === undefined) s.infinityRunTime = s.totalTime
+  },
+})

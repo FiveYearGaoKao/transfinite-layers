@@ -13,10 +13,10 @@ import {
 import { infinityResetConfirm } from '@/app/uiActions'
 import InfinityUpgradeItem from './infinityUpgradeItem.vue'
 
-/**5x5升级表:行×列,未定义(建设中)的格子为null,显示占位格 */
-const iuGrid = computed<(InfinityUpgradeDef | undefined)[][]>(() =>
+/**5x5升级表:行×列(25格全部已定义) */
+const iuGrid = computed<InfinityUpgradeDef[][]>(() =>
   Array.from({ length: 5 }, (_, r) =>
-    Array.from({ length: 5 }, (_, c) => getInfinityUpgrade(`iu${r + 1}${c + 1}`)),
+    Array.from({ length: 5 }, (_, c) => getInfinityUpgrade(`iu${r + 1}${c + 1}`)!),
   ),
 )
 </script>
@@ -46,16 +46,10 @@ const iuGrid = computed<(InfinityUpgradeDef | undefined)[][]>(() =>
     <div id="infinityUpgrades">
       <span class="sectionTitle">无限升级</span>
       <div v-for="(row, r) in iuGrid" :key="r" class="iuRow">
-        <template v-for="(def, c) in row" :key="c">
-          <InfinityUpgradeItem v-if="def" :def="def" />
-          <button v-else class="upgrade placeholder" disabled>
-            <span class="text bold">???</span>
-            <span class="text">建设中</span>
-          </button>
-        </template>
+        <InfinityUpgradeItem v-for="(def, c) in row" :key="c" :def="def" />
       </div>
       <span class="text faint">
-        未写出的升级仍在建设中;同一列必须从上到下购买。价格与效果公式仍为占位,待测试调整。
+        同一列必须从上到下购买。部分升级的效果与价格仍在测试调整中。
       </span>
     </div>
   </div>
@@ -102,16 +96,6 @@ span.sectionTitle {
   color: var(--dim);
   border-bottom: 1px solid var(--faint);
   padding-bottom: 2px;
-}
-button.upgrade.placeholder {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-button.upgrade.placeholder span.text {
-  font-size: 12px;
-}
-button.upgrade.placeholder span.text.bold {
-  font-size: 13px;
 }
 span.faint {
   color: var(--faint);

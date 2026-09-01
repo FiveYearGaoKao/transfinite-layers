@@ -3,13 +3,21 @@
 //无限升级为5x5表格,id格式'iu'+行+列(如'iu11');第一行无限制,其余要求同列上一行已购买
 import Decimal, { type DecimalSource } from 'break_eternity.js'
 import { player } from '@/data/player'
-import { getPoints, getUnlockedNormalAchievementCount } from '@/access'
+import {
+  dimensionAmount,
+  getBase,
+  getPoints,
+  getUnlockedNormalAchievementCount,
+  totalChallengeCompletions,
+} from '@/access'
 import { INFINITY_UNLOCK_POINTS } from '@/data/constants'
+import { isLayer0 } from '@/tools/ordinal'
 import { format } from '@/tools/format'
 import {
   calculate,
   effectText,
   registerEffect,
+  slotValue,
   type EffectDef,
   type RegisteredEffect,
 } from './effects'
@@ -35,7 +43,7 @@ export function infinityUpgradeCount(): Decimal {
   return new Decimal(player.infinityUpgrades.length)
 }
 
-/**所有已定义的无限升级(未写出的升级暂无定义,UI显示占位格) */
+/**所有已定义的无限升级(5x5共25格) */
 export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
   {
     id: 'iu11',
@@ -52,12 +60,12 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
   {
     id: 'iu12',
     name: '点数作用强化',
-    description: '点数作用(升级u1)的效果指数+1',
+    description: '本列每购买1个无限升级,点数作用(升级u1)的效果指数+1',
     cost: 2,
     effect: {
       target: 'u1:base',
       type: 'add',
-      value: () => 1,
+      value: () => infinityUpgradeCountInColumn(2),
       text: '点数作用指数 +{value}',
     },
   },
@@ -75,7 +83,7 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
   },
   {
     id: 'iu14',
-    name: '自动化永存',
+    name: '自动化永存I',
     description: '升级u4(自动化1)不会被普通层级重置',
     cost: 5,
   },
@@ -165,24 +173,19 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
   {
     id: 'iu33',
     name: '无限维度',
-    description: '根据当前无限点数提供维度4乘数,在1e300无限点数时达到上限',
+    description: '根据本次无限经过的秒数提升所有维度乘数',
     cost: 200,
     effect: {
       target: 'dimensionMult',
       type: 'mul',
-      value: () =>
-        Decimal.min(player.infinityPoints, new Decimal(1e300))
-          .add(1)
-          .pow(1 / 3),
-      isActive: (ctx) => ctx.id == 3,
-      text: '维度4乘数 x{value}',
+      base: { target: 'iu33:base', init: () => 0.3 },
+      value: (_ctx, base) => player.infinityRunTime.add(1).pow(base ?? new Decimal(0.3)),
+      text: '所有维度乘数 x{value}',
     },
-    //效果文本须按维度4(id==3)的生效条件计算,否则会显示中性值x1
+    //效果文本用槽位组合值计算(iu43会提升指数),直接读取实时值
     effectText() {
-      const v = Decimal.min(player.infinityPoints, new Decimal(1e300))
-        .add(1)
-        .pow(1 / 3)
-      return `维度4乘数 x${format(v)}`
+      const base = slotValue({ target: 'iu33:base', init: () => 0.3 }, { pos: [0], id: 0 })
+      return `所有维度乘数 x${format(player.infinityRunTime.add(1).pow(base))}`
     },
   },
   {
@@ -199,6 +202,15 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
   },
   {
     id: 'iu41',
+    name: '加速器豁免',
+    description: '购买加速器加成不重置任何东西',
+    cost: 1000,
+    effectText() {
+      return hasInfinityUpgrade('iu41') ? '已解锁' : '未解锁'
+    },
+  },
+  {
+    id: 'iu42',
     name: '加速器降价',
     description: '加速器加成的价格指数4→3',
     cost: 1000,
@@ -209,7 +221,19 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     },
     //离散型效果,数值本身无玩家可读意义,统一显示"已解锁/未解锁"
     effectText() {
-      return hasInfinityUpgrade('iu41') ? '已解锁' : '未解锁'
+      return hasInfinityUpgrade('iu42') ? '已解锁' : '未解锁'
+    },
+  },
+  {
+    id: 'iu43',
+    name: '无限维度强化',
+    description: '根据无限点数提升"无限维度"的效果指数',
+    cost: 2500,
+    effect: {
+      target: 'iu33:base',
+      type: 'add',
+      value: () => player.infinityPoints.add(1).log(getBase()).sqrt().mul(0.1),
+      text: '无限维度效果指数 +{value}',
     },
   },
   {
@@ -219,11 +243,62 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     cost: 625,
   },
   {
+    id: 'iu45',
+    name: '元声望升级',
+    description: '解锁元声望升级',
+    cost: 1e9,
+    //TODO: 元声望升级机制待实现
+  },
+  {
+    id: 'iu51',
+    name: '零层指数',
+    description: '层级0的维度指数+0.2',
+    cost: 1e4,
+    effect: {
+      target: 'dimensionExponent',
+      type: 'add',
+      value: () => 0.2,
+      isActive: (ctx) => isLayer0(ctx.pos),
+      text: '层级0维度指数 +{value}',
+    },
+  },
+  {
+    id: 'iu52',
+    name: '软上限削弱',
+    description: '根据完成普通挑战的总数削弱价格软上限的强度',
+    cost: 1e5,
+    effect: {
+      target: 'softCap:power',
+      type: 'exp',
+      value: () => new Decimal(0.99).pow(totalChallengeCompletions()),
+      text: '软上限强度 ^{value}',
+    },
+  },
+  {
+    id: 'iu53',
+    name: '自协同EX',
+    description: '所有维度产量x1.2^(该维度已购)',
+    cost: 1e6,
+    effect: {
+      target: 'production',
+      type: 'mul',
+      value: (ctx) => new Decimal(1.2).pow(dimensionAmount(ctx.pos, ctx.id, 1)),
+      text: '维度产量 x{value}',
+    },
+  },
+  {
     id: 'iu54',
     name: '自动化永存V',
     description: '升级u8(升级保留)不会被普通层级重置',
     cost: 3125,
     //TODO: 备选方案"解锁自动无限重置"留待后续,解锁途径(无限升级/成就/知识升级/挑战)未定
+  },
+  {
+    id: 'iu55',
+    name: '锻造',
+    description: '解锁锻造',
+    cost: 1e15,
+    //TODO: 锻造机制待实现
   },
 ]
 
@@ -240,6 +315,11 @@ export function getInfinityUpgrades(): InfinityUpgradeDef[] {
 /**某无限升级是否已购买 */
 export function hasInfinityUpgrade(id: string): boolean {
   return player.infinityUpgrades.includes(id)
+}
+
+/**某列已购买的无限升级数量(列从1开始,如iu12的"本列"为第2列) */
+export function infinityUpgradeCountInColumn(col: number): Decimal {
+  return new Decimal(player.infinityUpgrades.filter((x) => Number(x[3]) == col).length)
 }
 
 /**获取某无限升级的价格 */
@@ -286,7 +366,7 @@ function infinityUpgradeEffect(u: InfinityUpgradeDef): RegisteredEffect | undefi
     ...u.effect,
     id: `iu-${u.id}`,
     name: u.name,
-    //购买是必要条件,自定义生效条件(如iu32仅在挑战中、iu33仅维度4)叠加其上
+    //购买是必要条件,自定义生效条件(如iu32仅在挑战中、iu51仅层级0)叠加其上
     isActive: (ctx) => hasInfinityUpgrade(u.id) && (u.effect!.isActive?.(ctx) ?? true),
   }
 }

@@ -2,6 +2,7 @@
 import Decimal from 'break_eternity.js'
 import type { LayerId } from '@/data/types'
 import { c4BoughtOffset, getBase, getLayer, hasAchievement } from '@/access'
+import { hasInfinityUpgrade } from './infinity'
 import { initializeDimensions } from '@/data/types'
 import { format } from '@/tools/format'
 import { softCap } from './softCap'
@@ -93,6 +94,8 @@ export const BUYABLES: BuyableDef[] = [
       return `加速器效果 +${format(new Decimal(2).mul(n))}%`
     },
     onBuy(layer: LayerId) {
+      //无限升级iu41:购买加速器加成不重置任何东西
+      if (hasInfinityUpgrade('iu41')) return
       const L = getLayer(layer)
       if (!L) return
       L.points = new Decimal(1)

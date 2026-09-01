@@ -98,6 +98,8 @@ export function addValue(key: decimalKey, value: Decimal) {
  * break_eternity的toString对|mag|<1会丢1ulp(导致存档往返不恒等) */
 function markDecimals(obj: unknown): unknown {
   if (obj instanceof Decimal) {
+    //Infinity(dInf)的layer为Infinity:JSON会把$l序列化成null,且字符串'Infinity'无法被Decimal解析成Infinity,须专门序列化保证往返精确
+    if (!obj.isFinite()) return { $d: String(obj.sign * obj.mag), $l: 'Infinity' }
     if (obj.layer === 0) return { $d: String(obj.sign * obj.mag), $l: 0 }
     return { $d: obj.toString(), $l: obj.layer }
   }
@@ -112,11 +114,14 @@ function markDecimals(obj: unknown): unknown {
   return obj
 }
 /**将{$d,$l}标记还原为Decimal(读档用)
- * 注:layer0用fromComponents_noNormalize按位精确还原(不经过会丢精度的normalize),
- * 无$l标记的旧存档走fromString,保持旧行为 */
+ * 注:层0用fromComponents_noNormalize按位精确还原(不经过会丢精度的normalize),
+ * Infinity用数字入参构造(字符串'Infinity'会被解析成0),无$l标记的旧存档走fromString,保持旧行为 */
 function unmarkDecimals(obj: unknown): unknown {
   if (obj != null && typeof obj == 'object' && '$d' in obj) {
-    const marked = obj as { $d: string; $l?: number }
+    const marked = obj as { $d: string; $l?: number | string }
+    if (marked.$l === 'Infinity') {
+      return new Decimal(parseFloat(marked.$d))
+    }
     if (marked.$l === 0) {
       const n = parseFloat(marked.$d)
       return Decimal.fromComponents_noNormalize(Math.sign(n), 0, Math.abs(n))

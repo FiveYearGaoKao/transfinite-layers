@@ -1,5 +1,5 @@
 //成就注册表
-import Decimal from 'break_eternity.js'
+import Decimal, { type DecimalSource } from 'break_eternity.js'
 import { player } from '@/data/player'
 import {
   challengeCompletions,
@@ -26,6 +26,7 @@ import { addLog } from '@/app/log'
 import { NEWS_COUNT } from '@/app/news'
 import type { LayerId } from '@/data/types'
 import { compareLayer } from '@/tools/ordinal'
+import { hasInfinityUpgrade } from '@/compute/infinity'
 
 /**成就定义 */
 export interface AchievementDef {
@@ -35,7 +36,7 @@ export interface AchievementDef {
   /**是否为隐藏成就(未解锁时名称/描述显示"???",奖励固定1知识) */
   secret?: boolean
   /**知识奖励 */
-  reward: number
+  reward: DecimalSource
   /**数值效果(声明式,解锁后全局生效) */
   effect?: EffectDef
   /**额外效果的文字说明(tooltip第二行) */
@@ -236,7 +237,7 @@ const normalAchievements: AchievementDef[] = [
   {
     id: 'a37',
     name: '挑战者',
-    description: '完成挑战的总次数超过10',
+    description: '完成挑战的总次数不少于10',
     reward: 20,
     isCompleted: () => totalChallengeCompletions().gte(10),
   },
@@ -354,6 +355,66 @@ const normalAchievements: AchievementDef[] = [
     reward: 99,
     isCompleted: () => getPoints([0]).gte(Number.MAX_VALUE),
   },
+  {
+    id: 'a51',
+    name: '新的开始',
+    description: '进行一次无限重置',
+    reward: 10,
+    isCompleted: () => player.infinityPoints.gte(1),
+    effectText: '解锁更多知识升级',
+  },
+  {
+    id: 'a52',
+    name: '∞是横着的8',
+    description: '拥有恰好8无限点数',
+    reward: 48,
+    isCompleted: () => player.infinityPoints.eq(8),
+  },
+  {
+    id: 'a53',
+    name: '更多能量',
+    description: '使层级1提供的能量加成指数>=0.3',
+    reward: 50,
+    isCompleted: () =>
+      slotValue({ target: 'energy:base', init: () => 0.2 }, { pos: [0], id: 1 }).gte(0.3),
+  },
+  {
+    id: 'a54',
+    name: '无尽轮回',
+    description: '无限重置至少10次',
+    reward: 77,
+    isCompleted: () => player.infinityResets.gte(10),
+  },
+  {
+    id: 'a55',
+    name: '挑战掌控者',
+    description: '完成挑战5',
+    reward: 64,
+    isCompleted: () => challengeCompletions('c5').gte(1),
+    effectText: '解锁批量完成挑战的知识升级',
+  },
+  {
+    id: 'a56',
+    name: '另一种维度?',
+    description: '购买无限升级"无限维度"',
+    reward: 88,
+    isCompleted: () => hasInfinityUpgrade('iu33'),
+  },
+  {
+    id: 'a57',
+    name: '三倍体',
+    description: '使层级0加倍器的效果底数>=3',
+    reward: 99,
+    isCompleted: () =>
+      slotValue({ target: 'b12:base', init: () => 0.2 }, { pos: [0], id: 1 }).gte(3),
+  },
+  {
+    id: 'a58',
+    name: '百炼成钢',
+    description: '完成挑战的总次数不少于100',
+    reward: 100,
+    isCompleted: () => totalChallengeCompletions().gte(100),
+  },
 ]
 
 //------隐藏成就:较难获取,未解锁时名称作为提示,描述显示"???";奖励固定1知识------//
@@ -364,7 +425,7 @@ const secretAchievements: AchievementDef[] = [
     description: '点击滚动新闻中的rickroll超链接',
     secret: true,
     reward: 1,
-    isCompleted: () => hasAchievement('s11'),
+    isCompleted: () => false,
   },
   {
     id: 's12',
@@ -388,7 +449,7 @@ const secretAchievements: AchievementDef[] = [
     description: '随机到问题"1 + 1"并回答错误',
     secret: true,
     reward: 1,
-    isCompleted: () => hasAchievement('s14'),
+    isCompleted: () => false,
   },
   {
     id: 's15',
@@ -396,7 +457,7 @@ const secretAchievements: AchievementDef[] = [
     description: '尝试导入修改过的存档',
     secret: true,
     reward: 1,
-    isCompleted: () => hasAchievement('s15'),
+    isCompleted: () => false,
   },
   {
     id: 's16',
@@ -404,7 +465,7 @@ const secretAchievements: AchievementDef[] = [
     description: '连续切换主题100次,相邻两次间隔不超过1秒',
     secret: true,
     reward: 1,
-    isCompleted: () => hasAchievement('s16'),
+    isCompleted: () => false,
   },
 ]
 

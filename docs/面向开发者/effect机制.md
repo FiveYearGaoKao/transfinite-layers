@@ -30,9 +30,10 @@
 
 除主数值点外,还有**子目标(槽位)**用于修饰公式参数:
 `energy:base`(能量指数)、`u1:base`(点数作用指数)、`b11:base`/`b11:amount`(加速器底数/等级)、
-`b12:quad`/`b12:base`/`b12:amount`(加倍器)、`softCap:base`(软上限阈值)、
-`b12:costBase`(加倍器基础价格指数,默认2,iu22 降为0)、`b13:costMult`(加速器加成价格指数,默认4,iu41 降为3)、
-`a41:decay`(成就"逆流而上"的衰减速度,默认1,iu21 降为0.1)。
+`b12:quad`/`b12:base`/`b12:amount`(加倍器)、`softCap:base`(软上限阈值)、`softCap:power`(软上限对数幂次,默认2,iu52 削弱为 power^(0.99^挑战总数))、
+`b12:costBase`(加倍器基础价格指数,默认2,iu22 降为0)、`b13:costMult`(加速器加成价格指数,默认4,iu42 降为3)、
+`a41:decay`(成就"逆流而上"的衰减速度,默认1,iu21 降为0.1)、
+`iu33:base`(无限升级IU33的维度乘数指数,默认0.3,iu43 提升)。
 
 ### 效果(Effect)
 一条加成的声明,注册时自动补充 `id`/`name`。
@@ -106,7 +107,7 @@ for (const u of UPGRADES) {
 | 成就 | `achievement-{id}` | 已解锁 |
 | 知识升级 | `knowledge-{id}` | 已购买至少1次 |
 | 挑战惩罚/奖励 | `challenge-{id}-penalty-{n}` / `-reward-{n}` | 激活中 / 完成次数>0 |
-| 无限升级 | `iu-{id}` | 已购买(可叠加自定义条件,如 iu32 仅挑战中、iu33 仅维度4) |
+| 无限升级 | `iu-{id}` | 已购买(可叠加自定义条件,如 iu32 仅挑战中、iu51 仅层级0) |
 
 ## 六、效果禁用与挑战
 

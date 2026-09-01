@@ -218,7 +218,7 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     description: '解锁自动化的"买最大"模式,每级使批量购买数量翻倍',
     maxAmount: new Decimal(10),
     cost(n: Decimal): Decimal {
-      return new Decimal(5).mul(new Decimal(2).pow(n)).floor()
+      return new Decimal(10).mul(new Decimal(1.5).pow(n)).floor()
     },
     require: [],
     canBuy: () => hasAchievement('a21'),

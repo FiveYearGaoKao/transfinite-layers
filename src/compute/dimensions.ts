@@ -10,7 +10,7 @@ import './energy'
 
 /**层级0点数生产软上限:阈值与强度(产量超过阈值后增长变缓,减缓逼近1.79e308终局) */
 export const LAYER0_CAP_THRESHOLD = 1e300
-export const LAYER0_CAP_POWER = 1
+export const LAYER0_CAP_POWER = 0.5
 
 //层级0维度1的产量软上限注册为pointsGain目标上的custom效果(custom优先级最高,天然在其它点数获取加成之后生效)
 registerEffect({
