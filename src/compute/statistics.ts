@@ -208,6 +208,7 @@ export function buildGlobalNodes(): StatNode[] {
       base: () => new Decimal(3600),
       label: () => '答题冷却(秒)',
     },
+    { target: 'knowledgeGain', sign: 'x', label: () => '知识获取' },
   ]
   return defs.map((sd) => statRoot(sd, 0, [0]))
 }

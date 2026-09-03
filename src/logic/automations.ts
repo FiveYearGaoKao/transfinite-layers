@@ -1,5 +1,6 @@
 //自动化系统
 //自动化类型通过注册表(AUTOMATIONS)定义，每个层级的配置相互独立
+//解锁知识升级auto-global-config后启用"全局配置"模板:新创建的层级配置按模板填充,并可一键应用到所有层级(见下方"全局配置"节)
 import Decimal from 'break_eternity.js'
 import { player } from '@/data/player'
 import { getLayer, higherLayer, prevLayer } from '@/access'
@@ -75,6 +76,50 @@ export const AUTOMATIONS: AutomationDef[] = [
   },
 ]
 
+//------全局配置------
+/**深拷贝自动化配置:perItem记录必须单独复制(防止模板与各层互相串改);Decimal不可变可安全共享 */
+function cloneCfg<T extends AutoConfig>(cfg: T): T {
+  if ('perItem' in cfg) {
+    const buy = cfg as unknown as AutoBuyConfig
+    return { ...cfg, perItem: { ...buy.perItem } } as T
+  }
+  return { ...cfg }
+}
+/**获取全局自动化配置模板(缺失类型按默认补齐,解锁auto-global-config后才有意义) */
+export function getGlobalAutomation(): LayerAutomation {
+  if (!player.autoGlobal) player.autoGlobal = { cfgs: {} }
+  const g = player.autoGlobal
+  if (!g.cfgs) g.cfgs = {}
+  for (const def of AUTOMATIONS) {
+    if (!g.cfgs[def.id]) g.cfgs[def.id] = def.defaultCfg()
+  }
+  return g
+}
+/**初始化全局配置模板:解锁后首次打开"全局配置"页时,从指定层复制整套配置(仅执行一次) */
+export function initGlobalFromLayer(pos: LayerId) {
+  if (!hasKnowledge('auto-global-config')) return
+  if (player.autoGlobalInit) return
+  const src = getLayerAutomation(pos)
+  const g = getGlobalAutomation()
+  for (const def of AUTOMATIONS) {
+    g.cfgs[def.id] = cloneCfg(src.cfgs[def.id] ?? def.defaultCfg())
+  }
+  player.autoGlobalInit = true
+}
+/**将全局配置模板的某类型应用到所有(真实)层级 */
+export function applyGlobalAuto(typeId: string) {
+  if (!hasKnowledge('auto-global-config')) return
+  const tpl = getGlobalAutomation().cfgs[typeId]
+  if (!tpl) return
+  for (const key of Object.keys(player.layers)) {
+    getLayerAutomation(posArray(key)).cfgs[typeId] = cloneCfg(tpl)
+  }
+}
+/**将全局配置模板的全部类型应用到所有(真实)层级 */
+export function applyAllGlobalAuto() {
+  for (const def of AUTOMATIONS) applyGlobalAuto(def.id)
+}
+
 //------配置访问------
 /**获取某层的自动化配置，不存在或结构缺失则创建默认 */
 export function getLayerAutomation(pos: LayerId): LayerAutomation {
@@ -96,9 +141,14 @@ export function getLayerAutomation(pos: LayerId): LayerAutomation {
     delete old.buyables
     delete old.reset
   }
-  //为每个注册的自动化补齐默认配置
+  //为每个注册的自动化补齐配置:解锁全局配置后,新创建的配置以全局模板为准,否则按默认值
+  const useGlobal = hasKnowledge('auto-global-config')
   for (const def of AUTOMATIONS) {
-    if (!auto.cfgs[def.id]) auto.cfgs[def.id] = def.defaultCfg()
+    if (!auto.cfgs[def.id]) {
+      auto.cfgs[def.id] = useGlobal
+        ? cloneCfg(getGlobalAutomation().cfgs[def.id] ?? def.defaultCfg())
+        : def.defaultCfg()
+    }
   }
   return auto
 }

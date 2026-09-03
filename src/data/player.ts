@@ -53,6 +53,10 @@ export interface Player {
   boostSpeed: Decimal
   /**各层级的自动化配置 */
   automations: Record<string, LayerAutomation>
+  /**自动化全局配置模板(知识升级auto-global-config解锁,详见logic/automations) */
+  autoGlobal: LayerAutomation
+  /**全局配置模板是否已初始化过(首次打开"全局配置"页时从选中层复制,仅执行一次) */
+  autoGlobalInit: boolean
   /**是否曾购买过自动化1(u4)(永久解锁自动化标签页) */
   automationUnlocked: boolean
   /**各挑战的完成次数 */
@@ -117,6 +121,8 @@ export function initializeSave(): Player {
     knowledgeUpgrades: {},
     boostSpeed: new Decimal(DEFAULT_BOOST_SPEED),
     automations: {},
+    autoGlobal: { cfgs: {} },
+    autoGlobalInit: false,
     automationUnlocked: false,
     challenges: {},
     activeChallenges: [],

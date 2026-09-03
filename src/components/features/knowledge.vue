@@ -33,6 +33,7 @@ const CATEGORY_NAMES: Record<string, string> = {
   bonus: '加成',
   command: '指令',
   auto: '自动化',
+  knowledge: '知识',
 }
 const subtab = ref('upgrades')
 /**知识页子标签的循环切换(快捷键左右键用) */

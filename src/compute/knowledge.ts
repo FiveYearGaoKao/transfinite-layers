@@ -236,7 +236,42 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     require: [['auto-batch', new Decimal(1)]],
     canBuy: () => true,
   },
+  {
+    id: 'knowledge-achievement',
+    name: '成就知识',
+    category: 'knowledge',
+    description: '每个已解锁的普通成就使知识获取+1%，效果叠加',
+    maxAmount: new Decimal(1),
+    cost: () => new Decimal(64),
+    require: [['bonus-achievement', new Decimal(1)]],
+    canBuy: () => true,
+    effect: {
+      target: 'knowledgeGain',
+      type: 'mul',
+      value: () => new Decimal(0.01).mul(getUnlockedNormalAchievementCount()).add(1),
+      text: '知识获取 x{value}',
+    },
+  },
+  {
+    id: 'auto-global-config',
+    name: '全局配置',
+    category: 'auto',
+    description: '解锁自动化全局配置',
+    maxAmount: new Decimal(1),
+    cost: () => new Decimal(100),
+    require: [['auto-upgrade', new Decimal(1)]],
+    canBuy: () => true,
+  },
 ]
+
+/**增加知识(经过加成管道后)
+ * @returns 实际增加的知识
+ */
+export function addKnowledge(value: Decimal): Decimal {
+  value = calculate('knowledgeGain', { pos: [0], id: 0 }, value)
+  player.knowledge = player.knowledge.add(value)
+  return value
+}
 
 /**获取某知识升级的定义 */
 export function getKnowledgeUpgrade(id: string): KnowledgeUpgradeDef | undefined {

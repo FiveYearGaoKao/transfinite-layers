@@ -27,6 +27,7 @@ import { NEWS_COUNT } from '@/app/news'
 import type { LayerId } from '@/data/types'
 import { compareLayer } from '@/tools/ordinal'
 import { hasInfinityUpgrade } from '@/compute/infinity'
+import { addKnowledge } from '@/compute/knowledge'
 
 /**成就定义 */
 export interface AchievementDef {
@@ -500,7 +501,7 @@ export function getAchievementCount(): number {
 /**解锁一个成就并发放知识奖励 */
 function unlockAchievement(def: AchievementDef) {
   player.achievements.push(def.id)
-  player.knowledge = player.knowledge.add(def.reward)
+  addKnowledge(new Decimal(def.reward))
   addLog('progress', `已解锁成就：${def.name}`)
 }
 

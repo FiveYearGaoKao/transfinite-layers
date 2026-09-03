@@ -12,19 +12,21 @@
 ## 二、基本概念
 
 ### 数值点(target)
+
 一个可以"被加成"的数值的标识。核心公式用 `calculate('target', ctx, base)` 读取最终值。
 已定义的数值点(见 `compute/effects.ts`):
 
-| target | 含义 | 被谁读取 |
-|---|---|---|
-| `dimensionCost` | 维度价格 | `dimensions.dimensionCostAt` |
-| `dimensionMult` | 维度乘数 | `dimensions.dimensionMultiplier` |
-| `dimensionExponent` | 维度指数 | `dimensions.dimensionExponent` |
-| `production` | 维度产量 | `dimensions.productionPerSecond` |
-| `pointsGain` | 点数获取(含层0软上限) | `dimensions`(层0维度1产量)/`prestige`(重置收益) |
-| `upgradeCost` | 升级价格 | (预留) |
-| `psdSpeed` | 全局速度 | `knowledge.getPsdSpeed` |
-| `infinityGain` | 无限点数获取 | `infinity.infinityGain`(基础公式经管道后向下取整) |
+| target              | 含义                  | 被谁读取                                          |
+| ------------------- | --------------------- | ------------------------------------------------- |
+| `dimensionCost`     | 维度价格              | `dimensions.dimensionCostAt`                      |
+| `dimensionMult`     | 维度乘数              | `dimensions.dimensionMultiplier`                  |
+| `dimensionExponent` | 维度指数              | `dimensions.dimensionExponent`                    |
+| `production`        | 维度产量              | `dimensions.productionPerSecond`                  |
+| `pointsGain`        | 点数获取(含层0软上限) | `dimensions`(层0维度1产量)/`prestige`(重置收益)   |
+| `upgradeCost`       | 升级价格              | (预留)                                            |
+| `psdSpeed`          | 全局速度              | `knowledge.getPsdSpeed`                           |
+| `infinityGain`      | 无限点数获取          | `infinity.infinityGain`(基础公式经管道后向下取整) |
+| `knowledgeGain`     | 知识获取              | `knowledge.addKnowledge`                          |
 
 > 注:`resetGain` 目标已移除,所有加成只作用于 `pointsGain`。层级0维度1的产量软上限(`layer0-softcap`)注册为 `pointsGain` 上的 `custom` 效果——`custom` 优先级最高,天然在所有乘法加成之后生效。
 
@@ -36,17 +38,18 @@
 `iu33:base`(无限升级IU33的维度乘数指数,默认0.3,iu43 提升)。
 
 ### 效果(Effect)
+
 一条加成的声明,注册时自动补充 `id`/`name`。
 
 ```ts
 interface EffectDef {
-  target: string        // 主目标或子目标(如 'b11:base')
-  type: 'add'|'mul'|'exp'|'custom'
-  value?(ctx, base?, amount?, current?)  // 加成数值
-  base?: EffectSlot     // 可调参数槽位(底数/指数/等级)
-  amount?: EffectSlot   // 等级槽位(仅维度/可购买)
-  text?: string         // 描述模板
-  order?: number        // 覆盖默认优先级
+  target: string // 主目标或子目标(如 'b11:base')
+  type: 'add' | 'mul' | 'exp' | 'custom'
+  value?(ctx, base?, amount?, current?) // 加成数值
+  base?: EffectSlot // 可调参数槽位(底数/指数/等级)
+  amount?: EffectSlot // 等级槽位(仅维度/可购买)
+  text?: string // 描述模板
+  order?: number // 覆盖默认优先级
   isActive?(ctx): boolean // 生效条件
 }
 ```
@@ -56,11 +59,12 @@ interface EffectDef {
 - `EffectContext = { pos: LayerId, id: number }`:当前作用的位置与编号(维度 id / 可购买 id)。
 
 ### 槽位(Slot)
+
 效果公式里可被其他效果"进一步修饰"的参数。组合后参与主效果计算,并可被统计页展开查看构成。
 
 ```ts
 interface EffectSlot {
-  target: string        // 子目标标识,其他效果可对其实施修饰
+  target: string // 子目标标识,其他效果可对其实施修饰
   init(ctx): DecimalSource // 初始值
 }
 ```
@@ -94,20 +98,21 @@ interface EffectSlot {
 ```ts
 // compute/upgrades.ts
 for (const u of UPGRADES) {
-  const e = upgradeEffect(u)  // 自动补 id(`upgrade-${u.id}`)/name/isActive
+  const e = upgradeEffect(u) // 自动补 id(`upgrade-${u.id}`)/name/isActive
   if (e) registerEffect(e)
 }
 ```
 
 各系统自动注册时的 id 前缀:
-| 来源 | id 前缀 | 生效条件 |
-|---|---|---|
-| 升级 | `upgrade-{id}` | 本层已购买(可自定义,如 u1 作用于上层) |
-| 可购买 | `buyable-{id}` | 始终(等级槽位含免费等级) |
-| 成就 | `achievement-{id}` | 已解锁 |
-| 知识升级 | `knowledge-{id}` | 已购买至少1次 |
-| 挑战惩罚/奖励 | `challenge-{id}-penalty-{n}` / `-reward-{n}` | 激活中 / 完成次数>0 |
-| 无限升级 | `iu-{id}` | 已购买(可叠加自定义条件,如 iu32 仅挑战中、iu51 仅层级0) |
+
+| 来源          | id 前缀                                      | 生效条件                                                |
+| ------------- | -------------------------------------------- | ------------------------------------------------------- |
+| 升级          | `upgrade-{id}`                               | 本层已购买(可自定义,如 u1 作用于上层)                   |
+| 可购买        | `buyable-{id}`                               | 始终(等级槽位含免费等级)                                |
+| 成就          | `achievement-{id}`                           | 已解锁                                                  |
+| 知识升级      | `knowledge-{id}`                             | 已购买至少1次                                           |
+| 挑战惩罚/奖励 | `challenge-{id}-penalty-{n}` / `-reward-{n}` | 激活中 / 完成次数>0                                     |
+| 无限升级      | `iu-{id}`                                    | 已购买(可叠加自定义条件,如 iu32 仅挑战中、iu51 仅层级0) |
 
 ## 六、效果禁用与挑战
 

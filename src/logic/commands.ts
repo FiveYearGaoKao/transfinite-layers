@@ -3,7 +3,7 @@ import Decimal from 'break_eternity.js'
 import { player } from '@/data/player'
 import { addLog } from '@/app/log'
 import { rng, seedInt } from '@/save/rng'
-import { hasKnowledge, knowledgeAmount } from '@/compute/knowledge'
+import { addKnowledge, hasKnowledge, knowledgeAmount } from '@/compute/knowledge'
 import { calculate } from '@/compute/effects'
 import { formatWhole } from '@/tools/format'
 import { generateMathQuestion, type QuizQuestion } from '@/tools/quiz'
@@ -46,8 +46,11 @@ export function doCheckin(): { reward: Decimal; streak: number } | null {
   const highStreak = consecutive && roll > 90 ? player.checkin.highStreak + 1 : roll > 90 ? 1 : 0
   player.checkin = { lastDay: dateString(0), streak, highStreak }
   const reward = new Decimal(roll).add(10 * streak)
-  player.knowledge = player.knowledge.add(reward)
-  addLog('progress', `签到成功!连续${streak}天,获得${formatWhole(reward)}知识`)
+  const finalReward = addKnowledge(reward)
+  addLog(
+    'progress',
+    `签到成功!今日运势:${roll}` + '\n' + `连续签到${streak}天,获得${formatWhole(finalReward)}知识`,
+  )
   return { reward, streak }
 }
 
@@ -129,8 +132,7 @@ export function submitQuizAnswer(
   player.pendingQuiz = null
   const correct = answerCorrect(question, answer)
   if (correct) {
-    const reward = quizReward()
-    player.knowledge = player.knowledge.add(reward)
+    const reward = addKnowledge(quizReward())
     addLog('progress', `答对!获得${formatWhole(reward)}知识`)
     return { correct, reward }
   }
