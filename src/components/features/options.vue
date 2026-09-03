@@ -5,6 +5,7 @@ import { format, formatTime, formatWhole } from '@/tools/format'
 import { player } from '@/data/player'
 import type { LayerId } from '@/data/types'
 import { registerSubtabCycler, unregisterSubtabCycler } from '@/app/navigation'
+import { getHotkeys, type HotkeyDef } from '@/app/hotkeys'
 import { getActiveLayers, getLayerName, hasAchievement } from '@/access'
 import { NEWS_COUNT } from '@/app/news'
 import { buildGlobalNodes, buildLayerNodes, type StatNode } from '@/compute/statistics'
@@ -36,20 +37,8 @@ onUnmounted(() => unregisterSubtabCycler('options'))
 /**是否为生产构建(发布版),调试区入口在发布版中隐藏 */
 const isProd = import.meta.env.PROD
 
-/**快捷键说明列表(快捷键页显示) */
-const HOTKEY_HELP: { keys: string; desc: string }[] = [
-  { keys: '1~9 / 0', desc: '切换主标签' },
-  { keys: '← / →', desc: '层级页切换所选层级,其余页切换子标签' },
-  { keys: 'Shift+1~4', desc: '购买当前层维度1~4' },
-  { keys: 'R', desc: '重置当前层(受二次确认设置控制)' },
-  { keys: 'I', desc: '无限重置(点数达到1.79e308时可用)' },
-  { keys: 'S', desc: '弹出存档对话框' },
-  { keys: 'L', desc: '弹出读档对话框' },
-  { keys: 'A', desc: '开关当前层自动化' },
-  { keys: 'Shift+A', desc: '开关全部自动化' },
-  { keys: 'B', desc: '循环切换加速倍率' },
-  { keys: '/', desc: '聚焦指令输入框并输入"/"' },
-]
+/**快捷键说明列表(快捷键页显示;由注册表驱动,新增快捷键无需改动本文件) */
+const HOTKEY_HELP: HotkeyDef[] = getHotkeys()
 
 /**导出存档 */
 const exportText = ref('')
