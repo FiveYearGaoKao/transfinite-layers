@@ -223,10 +223,22 @@ export function getUnlockedNormalAchievementCount(): number {
 export function isChallengeActive(id: string): boolean {
   return player.activeChallenges.includes(id)
 }
-/**挑战C4的价格偏移:购买任何东西都使价格视为多购买1次(偏移量=本层购买总数) */
-export function c4BoughtOffset(layer: LayerRef | undefined, n: DecimalSource): Decimal {
+/**
+ * 挑战C4的价格偏移:购买本层维度或可购买会使除加速器加成外的价格视为多购买1次
+ * 价格索引 = 本物品将购数 + 本层购买总数 + 同批已买次数(每买1个总购买数+1,该物品价格索引再+1)
+ * 非C4时原样返回n;批量第j个的价格索引 = 已购数 + 总数 + 2j
+ * @param owned 本物品当前已购数(同批额外次数的基准)
+ * @param n 本物品的将购数(已购数 + 同批内已买数)
+ */
+export function c4BoughtOffset(
+  layer: LayerRef | undefined,
+  owned: DecimalSource,
+  n: DecimalSource,
+): Decimal {
   if (!isChallengeActive('c4')) return new Decimal(n)
-  return new Decimal(n).add(dimensionTotalBought(layer).add(buyableTotalBought(layer)))
+  const total = dimensionTotalBought(layer).add(buyableTotalBought(layer))
+  const extra = new Decimal(n).sub(owned).max(0)
+  return new Decimal(n).add(total).add(extra)
 }
 /**某挑战的完成次数 */
 export function challengeCompletions(id: string): Decimal {

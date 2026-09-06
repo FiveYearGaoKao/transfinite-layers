@@ -209,9 +209,9 @@ function registerChallengeEffects(def: ChallengeDef) {
 
 /**应用当前激活挑战的动态效果(如每帧损失) */
 export function applyChallengeEffects(layer: Layer, pos: LayerId, dt: Decimal): void {
-  //挑战C5:除最高已解锁层级外,所有0阶层级每秒损失10%的维度、点数和能量
+  //挑战C5:除最高已解锁层级外,所有0阶层级每秒损失90%的维度、点数和能量
   if (isChallengeActive('c5') && !isHighestLayer(pos)) {
-    const factor = new Decimal(0.9).pow(dt)
+    const factor = new Decimal(0.1).pow(dt)
     layer.points = layer.points.mul(factor)
     layer.energy = layer.energy.mul(factor)
     for (const dim of layer.dimensions) dim[0] = dim[0].mul(factor)
@@ -302,18 +302,18 @@ const CHALLENGES: ChallengeDef[] = [
   {
     id: 'c4',
     name: '立即折算',
-    description: '挑战期间，购买任何东西都会使本层除加速器加成外的所有购买项价格视为多购买1次',
+    description: '挑战期间，购买本层维度或可购买会使除加速器加成外的维度/可购买价格视为多购买1次',
     layer: 'normal',
     unlockLayer: [3],
     resetTarget: [3],
     goal(k: Decimal): Decimal {
-      return new Decimal(1000).mul(new Decimal(1000).pow(k))
+      return new Decimal(1000).mul(new Decimal(1e4).pow(k))
     },
     rewardEffects: [
       {
         target: 'softCap:base',
         type: 'exp',
-        value: () => new Decimal(0.1).mul(challengeCompletions('c4')).add(1),
+        value: () => new Decimal(0.15).mul(challengeCompletions('c4')).add(1),
         text: '价格软上限阈值 ^{value}',
       },
     ],
@@ -322,7 +322,7 @@ const CHALLENGES: ChallengeDef[] = [
   {
     id: 'c5',
     name: '维度蒸发',
-    description: '挑战期间，除最高层级外，所有0阶层级每秒损失10%的维度、点数和能量',
+    description: '挑战期间，除最高层级外，所有0阶层级每秒损失90%的维度、点数和能量',
     layer: 'normal',
     unlockLayer: [4],
     resetTarget: [4],

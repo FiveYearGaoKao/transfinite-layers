@@ -10,7 +10,7 @@ import './energy'
 
 /**层级0点数生产软上限:阈值与强度(产量超过阈值后增长变缓,减缓逼近1.79e308终局) */
 export const LAYER0_CAP_THRESHOLD = 1e300
-export const LAYER0_CAP_POWER = 0.5
+export const LAYER0_CAP_POWER = 0.75
 
 //层级0维度1的产量软上限注册为pointsGain目标上的custom效果(custom优先级最高,天然在其它点数获取加成之后生效)
 registerEffect({
@@ -45,8 +45,9 @@ export function dimensionCostAt(layer: LayerId, id: number, n: Decimal): Decimal
   const order = Math.min(getLayerOrder(layer), DIMENSIONS.length - 1)
   const formula = DIMENSIONS[order]?.cost
   if (!formula) return Decimal.dInf
-  //挑战C4:购买任何东西都使价格视为多购买1次(偏移量=本层购买总数)
-  const n2 = c4BoughtOffset(layer, n)
+  //挑战C4的偏移量含同批已买次数,见c4BoughtOffset(非C4时n原样)
+  const owned = dimensionAmount(layer, id, 1)
+  const n2 = c4BoughtOffset(layer, owned, n)
   const base = softCap(formula(layer, id, n2))
   return calculate('dimensionCost', { pos: layer, id }, base)
 }

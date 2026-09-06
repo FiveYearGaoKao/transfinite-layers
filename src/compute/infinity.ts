@@ -47,13 +47,13 @@ export function infinityUpgradeCount(): Decimal {
 export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
   {
     id: 'iu11',
-    name: '无限力量',
-    description: '根据无限重置次数提升所有维度乘数',
+    name: '总量加成',
+    description: '根据无限点数总量提升所有维度乘数',
     cost: 1,
     effect: {
       target: 'dimensionMult',
       type: 'mul',
-      value: () => player.infinityResets.add(1),
+      value: () => player.infinityPoints.add(1).ln().add(1).pow(2),
       text: '所有维度乘数 x{value}',
     },
   },
@@ -72,12 +72,12 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
   {
     id: 'iu13',
     name: '能量涌动',
-    description: '每购买1个无限升级,能量指数+0.005',
+    description: '每购买1个无限升级,能量指数+0.008',
     cost: 3,
     effect: {
       target: 'energy:base',
       type: 'add',
-      value: () => new Decimal(0.005).mul(infinityUpgradeCount()),
+      value: () => new Decimal(0.008).mul(infinityUpgradeCount()),
       text: '能量指数 +{value}',
     },
   },
@@ -96,12 +96,12 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
   {
     id: 'iu21',
     name: '逆流永驻',
-    description: '成就"逆流而上"的效果衰减速度慢10倍',
+    description: '成就"逆流而上"的效果衰减速度慢60倍',
     cost: 5,
     effect: {
       target: 'a41:decay',
       type: 'custom',
-      value: () => 0.1,
+      value: () => 1 / 60,
     },
     //离散型效果,数值本身无玩家可读意义,统一显示"已解锁/未解锁"
     effectText() {
@@ -152,7 +152,7 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     id: 'iu31',
     name: '成就点数',
     description: '普通层级重置之后保留(当前解锁普通成就总量)的点数',
-    cost: 80,
+    cost: 50,
     effectText() {
       return `保留 ${getUnlockedNormalAchievementCount()} 点数`
     },
@@ -161,7 +161,7 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     id: 'iu32',
     name: '挑战能量',
     description: '能量指数+0.05,仅在挑战中生效',
-    cost: 100,
+    cost: 80,
     effect: {
       target: 'energy:base',
       type: 'add',
@@ -174,7 +174,7 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     id: 'iu33',
     name: '无限维度',
     description: '根据本次无限经过的秒数提升所有维度乘数',
-    cost: 200,
+    cost: 100,
     effect: {
       target: 'dimensionMult',
       type: 'mul',
@@ -341,11 +341,10 @@ export function canBuyInfinityUpgrade(id: string): boolean {
 }
 
 //------无限点数获取------
-/**无限点数获取的基础公式:max(√(log₂(x+1))−31, 0),x为层级0点数
- * 1.79e308 时 log₂≈1024、√≈32,恰好获得约1无限点 */
+/**无限点数获取的基础公式:max(log₂(x+1)/64−15, 0),x为层级0点数
+ * 1.79e308 时 log₂≈1024、/64≈15,恰好获得约1无限点 */
 export function infinityGainBase(): Decimal {
-  const v = getPoints([0]).add(1).log2().sqrt().sub(31)
-  return Decimal.max(v, 0)
+  return getPoints([0]).add(1).log2().div(64).sub(15).max(0)
 }
 
 /**无限点数获取量:基础公式经infinityGain加成管道后向下取整(与普通层级重置收益一致) */
@@ -365,7 +364,7 @@ function infinityUpgradeEffect(u: InfinityUpgradeDef): RegisteredEffect | undefi
   return {
     ...u.effect,
     id: `iu-${u.id}`,
-    name: u.name,
+    name: `无限升级-${u.name}`,
     //购买是必要条件,自定义生效条件(如iu32仅在挑战中、iu51仅层级0)叠加其上
     isActive: (ctx) => hasInfinityUpgrade(u.id) && (u.effect!.isActive?.(ctx) ?? true),
   }

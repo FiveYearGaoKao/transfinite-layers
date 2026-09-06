@@ -48,9 +48,7 @@ const iuGrid = computed<InfinityUpgradeDef[][]>(() =>
       <div v-for="(row, r) in iuGrid" :key="r" class="iuRow">
         <InfinityUpgradeItem v-for="(def, c) in row" :key="c" :def="def" />
       </div>
-      <span class="text faint">
-        同一列必须从上到下购买。部分升级的效果与价格仍在测试调整中。
-      </span>
+      <span class="text faint"> 同一列必须从上到下购买。部分升级的效果与价格仍在测试调整中。 </span>
     </div>
   </div>
 </template>

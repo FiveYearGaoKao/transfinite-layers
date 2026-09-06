@@ -32,8 +32,8 @@ export async function resetRunConfirm() {
   const pos = player.layerSubtab
   if (!isChallengeActive('c4')) return
   const confirmed = await openConfirm({
-    title: '放弃本轮',
-    text: `将重置${getLayerName(pos)}及下层进度(点数清零),以恢复挑战4的价格。\n已购升级保留,此操作无法撤销。`,
+    title: '重开本轮',
+    text: `将重置${getLayerName(pos)}及下层进度(点数清零),以恢复点数和物品价格。\n已购升级保留,此操作无法撤销。`,
     confirmText: '确认重置',
     cancelText: '取消',
   })

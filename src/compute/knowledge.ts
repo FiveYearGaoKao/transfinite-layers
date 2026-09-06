@@ -227,6 +227,16 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     },
   },
   {
+    id: 'max-buy',
+    name: '最大购买',
+    category: 'auto',
+    description: '解锁层级页"购买模式"开关(买1个/买最大)和"全部最大"按钮(快捷键M)',
+    maxAmount: new Decimal(1),
+    cost: () => new Decimal(100),
+    require: [['auto-batch', new Decimal(5)]],
+    canBuy: () => true,
+  },
+  {
     id: 'auto-upgrade',
     name: '升级自动化',
     category: 'auto',

@@ -10,13 +10,18 @@ import {
   buyableFreeLevels,
   canBuyBuyable,
 } from '@/compute/buyables'
-import { buyBuyable } from '@/logic/purchase'
+import { buyBuyable, buyBuyableMax } from '@/logic/purchase'
 import { buyablesAutoUnlocked, isAutoItem, toggleAutoItem } from '@/logic/automations'
 
-const props = defineProps<{
-  pos: LayerId
-  def: BuyableDef
-}>()
+const props = withDefaults(
+  defineProps<{
+    pos: LayerId
+    def: BuyableDef
+    /**是否"买最大"(知识升级max-buy解锁的购买模式) */
+    maxBuy?: boolean
+  }>(),
+  { maxBuy: false },
+)
 /**已购等级 */
 const bought = () => buyableAmount(props.pos, props.def.id)
 /**免费等级 */
@@ -25,6 +30,11 @@ const free = () => buyableFreeLevels(props.pos, props.def.id)
 const description = () => buyableDescription(props.def, props.pos)
 /**总效果文字 */
 const effectText = () => buyableEffectText(props.def, props.pos)
+/**购买该可购买:买最大模式下一次尽量买满,否则买1个 */
+function buy() {
+  if (props.maxBuy) buyBuyableMax(props.pos, props.def.id)
+  else buyBuyable(props.pos, props.def.id)
+}
 </script>
 <template>
   <div class="buyableItem">
@@ -41,7 +51,7 @@ const effectText = () => buyableEffectText(props.def, props.pos)
     <div class="row tight">
       <button
         :class="['buyable', canBuyBuyable(props.pos, props.def.id) ? 'affordable' : '']"
-        @click="buyBuyable(props.pos, props.def.id)"
+        @click="buy()"
       >
         价格: {{ formatWhole(buyableCost(props.pos, props.def.id)) }}
       </button>

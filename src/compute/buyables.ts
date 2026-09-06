@@ -128,8 +128,9 @@ export function isUnlocked(layer: LayerId, id: number): boolean {
 export function buyableCostAt(layer: LayerId, id: number, n: Decimal): Decimal {
   const def = getBuyable(id)
   if (!def) return Decimal.dInf
-  //挑战C4:除加速器加成(b13)外,购买任何东西都使价格视为多购买1次(偏移量=本层购买总数)
-  const n2 = id != 13 ? c4BoughtOffset(layer, n) : n
+  //挑战C4:除加速器加成(b13)外,偏移量含同批已买次数,见c4BoughtOffset(非C4时n原样)
+  let n2 = n
+  if (id != 13) n2 = c4BoughtOffset(layer, buyableAmount(layer, id), n)
   const price = def.cost(layer, n2)
   //声明了softCap的可购买在获取价格时统一套对数软上限(见compute/softCap)
   if (def.softCap) return softCap(price, def.softCap.power)

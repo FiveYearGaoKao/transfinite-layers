@@ -4,9 +4,16 @@ import type { LayerId } from '@/data/types'
 import { addAmount, dimensionAmount, getLayer } from '@/access'
 import { player } from '@/data/player'
 import { dimensionCost, dimensionCostAt } from '@/compute/dimensions'
-import { buyableAmount, buyableCostAt, getBuyable } from '@/compute/buyables'
+import {
+  buyableAmount,
+  buyableCostAt,
+  getBuyable,
+  getBuyables,
+  isUnlocked,
+} from '@/compute/buyables'
 import { canBuyUpgrade, upgradeCost } from '@/compute/upgrades'
 import { type BuyableItem, maxBuyable, sumCost } from '@/compute/buying'
+import { getLayerOrder } from '@/tools/ordinal'
 
 /**维度作为可购买项 */
 function dimItem(layer: LayerId, id: number): BuyableItem {
@@ -99,5 +106,36 @@ export function buyUpgrade(layer: LayerId, id: number) {
     L.upgrades.push(id)
     //首次购买自动化1(u4)后永久解锁自动化标签页
     if (id == 4) player.automationUnlocked = true
+  }
+}
+
+/**
+ * 最大化购买某维度:以本层点数为预算尽量多买(数量上限=预算,实际可买数由价格计算)
+ * @returns 实际花费的点数
+ */
+export function buyDimensionMax(layer: LayerId, id: number): Decimal {
+  const L = getLayer(layer)
+  if (!L) return new Decimal(0)
+  return buyDimension(layer, id, L.points, L.points)
+}
+/**
+ * 最大化购买某可购买:以本层点数为预算尽量多买
+ * @returns 实际花费的点数
+ */
+export function buyBuyableMax(layer: LayerId, id: number): Decimal {
+  const L = getLayer(layer)
+  if (!L) return new Decimal(0)
+  return buyBuyable(layer, id, L.points, L.points)
+}
+/**
+ * 一键买满本层:维度从高到低、再按注册表顺序买已解锁的可购买,各自尽量买满
+ * (快捷键M与层级页"全部最大"按钮共用)
+ */
+export function maxBuyAll(layer: LayerId) {
+  const L = getLayer(layer)
+  if (!L) return
+  for (let i = L.dimensions.length - 1; i >= 0; --i) buyDimensionMax(layer, i)
+  for (const b of getBuyables(getLayerOrder(layer))) {
+    if (isUnlocked(layer, b.id)) buyBuyableMax(layer, b.id)
   }
 }

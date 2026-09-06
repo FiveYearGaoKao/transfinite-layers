@@ -3,10 +3,11 @@
 import { player } from '@/data/player'
 import { settings } from '@/app/settings'
 import { currentDialog } from '@/app/dialog'
-import { buyDimension } from '@/logic/purchase'
+import { buyDimension, buyDimensionMax, maxBuyAll } from '@/logic/purchase'
 import { toggleAllAuto, toggleLayerAuto } from '@/logic/automations'
 import { canReset } from '@/compute/prestige'
 import { canInfinityReset } from '@/compute/infinity'
+import { hasKnowledge } from '@/compute/knowledge'
 import { doLoad, doSave } from '@/app/saveActions'
 import { cycleBoost, infinityResetConfirm, resetLayerConfirm } from '@/app/uiActions'
 import { cycleCurrentSubtab, cycleLayer, mainTabsList } from '@/app/navigation'
@@ -87,7 +88,20 @@ export const HOTKEYS: HotkeyDef[] = [
     run: (e) => {
       e.preventDefault()
       const idx = digitIndex(e)
-      if (idx >= 0 && idx < DIMENSION_COUNT) buyDimension(player.layerSubtab, idx)
+      if (idx < 0 || idx >= DIMENSION_COUNT) return
+      //解锁"最大购买"且"购买模式:买最大"时数字键也买最大
+      if (hasKnowledge('max-buy') && settings.buyMax) buyDimensionMax(player.layerSubtab, idx)
+      else buyDimension(player.layerSubtab, idx)
+    },
+  },
+  //M:一键买满本层(维度从高到低,再可购买;需知识升级max-buy)
+  {
+    id: 'buy-all',
+    keys: 'M',
+    desc: '买满本层全部维度与可购买(需知识升级解锁)',
+    isPressed: (e) => pressLetter(e, 'm'),
+    run: () => {
+      if (hasKnowledge('max-buy')) maxBuyAll(player.layerSubtab)
     },
   },
   {

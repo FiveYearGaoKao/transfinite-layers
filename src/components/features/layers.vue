@@ -6,7 +6,7 @@ import { dimensionCost, dimensionExponent, dimensionMultiplier } from '@/compute
 import { getBuyables, isUnlocked as isBuyableUnlocked } from '@/compute/buyables'
 import { getUpgrades, isUnlocked as isUpgradeUnlocked } from '@/compute/upgrades'
 import { energyBonus } from '@/compute/energy'
-import { buyDimension, canAfford } from '@/logic/purchase'
+import { buyDimension, buyDimensionMax, canAfford, maxBuyAll } from '@/logic/purchase'
 import {
   dimsAutoUnlocked,
   isAutoItem,
@@ -16,7 +16,9 @@ import {
   toggleResetAuto,
 } from '@/logic/automations'
 import { canReset, resetGain } from '@/compute/prestige'
+import { hasKnowledge } from '@/compute/knowledge'
 import { resetLayerConfirm, resetRunConfirm } from '@/app/uiActions'
+import { settings, saveSettings } from '@/app/settings'
 import { isChallengeActive } from '@/access'
 import { player } from '@/data/player'
 import { computed, nextTick, ref, watch } from 'vue'
@@ -52,6 +54,20 @@ const upgradeList = computed(() =>
 )
 /**是否显示"放弃本轮"(挑战4激活且当前层不是临时层,临时层重置会无条件解锁新层级) */
 const showResetRun = computed(() => isChallengeActive('c4') && !player.layerSubtab.includes(-1))
+/**是否已解锁"最大购买"(知识升级max-buy):控制"购买模式"与"全部最大"的显示 */
+const maxBuyUnlocked = computed(() => hasKnowledge('max-buy'))
+/**购买模式是否为"买最大"(需已解锁) */
+const buyMaxMode = computed(() => settings.buyMax && maxBuyUnlocked.value)
+/**切换购买模式(买1个/买最大)并保存设置 */
+function toggleBuyMax() {
+  settings.buyMax = !settings.buyMax
+  saveSettings()
+}
+/**购买某维度:按当前购买模式买1个或买最大 */
+function buyDim(id: number) {
+  if (buyMaxMode.value) buyDimensionMax(player.layerSubtab, id)
+  else buyDimension(player.layerSubtab, id)
+}
 </script>
 <template>
   <div id="layers" :class="{ noTransition: suppressTransition }" style="height: 100%">
@@ -79,6 +95,14 @@ const showResetRun = computed(() => isChallengeActive('c4') && !player.layerSubt
         @click="resetRunConfirm()"
       >
         重开本轮
+      </button>
+    </div>
+
+    <!--购买模式与"全部最大"(需知识升级max-buy;置于层选择/重置行之下,维度表之上)-->
+    <div v-if="maxBuyUnlocked" class="purchaseRow">
+      <button @click="toggleBuyMax()">购买模式:{{ buyMaxMode ? '买最大' : '买1个' }}</button>
+      <button title="买满本层全部维度与可购买(维度从高到低)" @click="maxBuyAll(player.layerSubtab)">
+        全部最大
       </button>
     </div>
 
@@ -114,7 +138,7 @@ const showResetRun = computed(() => isChallengeActive('c4') && !player.layerSubt
         <div class="cell" :class="{ horizontal: dimsAutoUnlocked(player.layerSubtab) }">
           <button
             :class="['buyable', canAfford(player.layerSubtab, i - 1) ? 'affordable' : '']"
-            @click="buyDimension(player.layerSubtab, i - 1)"
+            @click="buyDim(i - 1)"
           >
             价格: {{ formatWhole(dimensionCost(player.layerSubtab, i - 1)) }}
           </button>
@@ -151,6 +175,7 @@ const showResetRun = computed(() => isChallengeActive('c4') && !player.layerSubt
           :key="buyable.id"
           :pos="player.layerSubtab"
           :def="buyable"
+          :max-buy="buyMaxMode"
         />
       </div>
     </div>
@@ -172,6 +197,16 @@ div.prestigeRow {
   flex-direction: row;
   align-items: center;
   gap: 6px;
+}
+/*购买操作行(购买模式/全部最大):紧凑,窄屏自动换行*/
+div.purchaseRow {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0;
 }
 div#dimensionTable {
   display: grid;

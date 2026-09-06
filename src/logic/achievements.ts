@@ -374,10 +374,10 @@ const normalAchievements: AchievementDef[] = [
   {
     id: 'a53',
     name: '更多能量',
-    description: '使层级1提供的能量加成指数>=0.3',
+    description: '使层级1提供的能量加成指数>=0.33',
     reward: 50,
     isCompleted: () =>
-      slotValue({ target: 'energy:base', init: () => 0.2 }, { pos: [0], id: 1 }).gte(0.3),
+      slotValue({ target: 'energy:base', init: () => 0.2 }, { pos: [0], id: 1 }).gte(0.33),
   },
   {
     id: 'a54',

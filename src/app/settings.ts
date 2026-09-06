@@ -43,6 +43,8 @@ export interface Settings {
   infinityResetConfirm: boolean
   /**是否启用快捷键 */
   hotkeys: boolean
+  /**层级页手动购买是否"买最大"(需知识升级max-buy,"购买模式"开关) */
+  buyMax: boolean
   /**资源栏显示的条目(键为资源id,见resourceRegistry) */
   resourceBarItems: Record<string, boolean>
 }
@@ -62,6 +64,7 @@ export function defaultSettings(): Settings {
     resetConfirm: true,
     infinityResetConfirm: true,
     hotkeys: true,
+    buyMax: false,
     resourceBarItems: {
       highest: true,
       points: true,
