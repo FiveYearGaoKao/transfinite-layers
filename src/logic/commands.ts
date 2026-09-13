@@ -1,7 +1,7 @@
 //指令系统的逻辑:签到/答题的数值与状态(状态存取+纯判定,不涉及UI)
 import Decimal from 'break_eternity.js'
 import { player } from '@/data/player'
-import { addLog } from '@/app/log'
+import { addLog } from '@/data/log'
 import { rng, seedInt } from '@/save/rng'
 import { addKnowledge, hasKnowledge, knowledgeAmount } from '@/compute/knowledge'
 import { calculate } from '@/compute/effects'

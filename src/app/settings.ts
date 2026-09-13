@@ -2,7 +2,7 @@
 import { reactive } from 'vue'
 import { gameName } from '@/data/constants'
 import { unlockAchievementById } from '@/logic/achievements'
-import { type logType } from '@/app/log'
+import { type logType } from '@/data/log'
 
 export type themeType = 'dark' | 'light'
 

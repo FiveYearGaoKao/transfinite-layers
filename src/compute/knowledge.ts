@@ -3,12 +3,12 @@
 import Decimal from 'break_eternity.js'
 import { player } from '@/data/player'
 import {
-  getLayerDepth,
-  getHighestActiveLayer,
+  getLayer,
   getUnlockedNormalAchievementCount,
+  getWindowTopLayer,
   hasAchievement,
 } from '@/access'
-import { temp } from '@/app/temp'
+import { temp } from '@/data/temp'
 import { format, formatWhole } from '@/tools/format'
 import {
   calculate,
@@ -142,7 +142,7 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     id: 'depth-points',
     name: '深度加成',
     category: 'bonus',
-    description: '若当前最高层级为m,则层级k的点数获取x2^(m-k)',
+    description: '同一窗口内最高层级与本层的高度差为d时,本层点数获取x2^d',
     maxAmount: new Decimal(1),
     cost: () => new Decimal(100),
     require: [],
@@ -151,9 +151,11 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
       target: 'pointsGain',
       type: 'mul',
       value: (ctx) => {
-        const m = getLayerDepth(getHighestActiveLayer() ?? [0])
-        const k = getLayerDepth(ctx.pos)
-        return new Decimal(2).pow(Math.max(0, m - k))
+        //同窗口内最高层与本层的高度差(用level相减,而非链上步数)
+        const top = getLayer(getWindowTopLayer(ctx.pos))
+        const L = getLayer(ctx.pos)
+        if (!top || !L) return 1
+        return new Decimal(2).pow(Decimal.max(0, top.level.sub(L.level)))
       },
       text: '点数获取 x{value}',
     },

@@ -42,8 +42,8 @@ export const DIMENSIONS: dimensionInfo[] = [
 
 /**已购n个时某维度的价格 */
 export function dimensionCostAt(layer: LayerId, id: number, n: Decimal): Decimal {
-  const order = Math.min(getLayerOrder(layer), DIMENSIONS.length - 1)
-  const formula = DIMENSIONS[order]?.cost
+  //按阶精确取公式行:阶未定义时价格为无穷(不可购买),不静默兜底到低阶公式
+  const formula = DIMENSIONS[getLayerOrder(layer)]?.cost
   if (!formula) return Decimal.dInf
   //挑战C4的偏移量含同批已买次数,见c4BoughtOffset(非C4时n原样)
   const owned = dimensionAmount(layer, id, 1)

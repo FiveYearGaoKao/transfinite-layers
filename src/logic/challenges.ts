@@ -1,6 +1,8 @@
 //挑战注册表
 //挑战通过注册表(CHALLENGES)定义,进入/退出时强制重置目标层
 //完成次数存入player.challenges,奖励效果按完成次数始终生效
+//对层级的引用一律是"绝对高度引用"(见 docs/面向开发者/层级系统.md):
+//解锁与目标层都按高度解析(精确匹配,否则上取整),因此不随窗口平移与删层而错位
 import Decimal from 'break_eternity.js'
 import { player } from '@/data/player'
 import type { Layer, LayerId } from '@/data/types'
@@ -11,22 +13,30 @@ import {
   getEnergy,
   getHighestActiveLayer,
   getLayer,
+  getOrderedLayers,
   getPoints,
   isChallengeActive,
   prevLayer,
+  resolveHeightRef,
 } from '@/access'
 import { maxSatisfying } from '@/tools/bisect'
-import { compareLayer } from '@/tools/ordinal'
+import { getLayerOrder } from '@/tools/ordinal'
 import { softCapValue } from '@/tools/softCap'
 import { format } from '@/tools/format'
 import { doReset } from './reset'
-import { addLog } from '@/app/log'
+import { addLog } from '@/data/log'
 
 /**挑战的所属重置层，'normal'为常规层级，其余为元层id */
 export type ChallengeLayer = 'normal' | string
 
 /**挑战目标资源类型 */
 export type ChallengeGoalType = 'points' | 'energy'
+
+/**
+ * 层级的高度引用:数字数组即"绝对高度的各级"(如[4]表示层级4,[10,15]表示层级10,15)
+ * 前导零可省略,故[4]与[0,4]表示同一高度
+ */
+export type LayerHeightRef = number[]
 
 /**挑战定义 */
 export interface ChallengeDef {
@@ -36,12 +46,12 @@ export interface ChallengeDef {
   description: string
   /**所属重置层，决定在挑战页面的哪个子标签页显示 */
   layer: ChallengeLayer
-  /**解锁所需达到的最小层级(拥有该层点数即解锁) */
-  unlockLayer: LayerId
-  /**目标层:进入/退出挑战时强制重置 */
-  resetTarget: LayerId
-  /**目标资源所在层级(缺省为resetTarget的下层) */
-  goalLayer?: LayerId
+  /**解锁所需达到的最小高度(存在高度≥它的层级即解锁,与坐标无关) */
+  unlockLayer: LayerHeightRef
+  /**目标层高度:进入/退出挑战时强制重置(解析为高度≥它的最低层级) */
+  resetTarget: LayerHeightRef
+  /**目标资源所在层高度(缺省为目标层的下层) */
+  goalLayer?: LayerHeightRef
   /**目标资源类型 */
   goalType?: ChallengeGoalType
   /**
@@ -85,10 +95,13 @@ export function getChallenge(id: string): ChallengeDef | undefined {
 }
 
 //------状态访问------
-/**某挑战是否已解锁(最高活跃层级 >= 解锁层,而非解锁层点数>0,避免重置后挑战重新关闭) */
+/**
+ * 某挑战是否已解锁:存在高度≥unlockLayer的层级
+ * 基于实际高度而非坐标,故base缩减后(自然数层级变少)仍按高度判定;
+ * 该条件同时保证挑战的目标层一定能解析出来
+ */
 export function isUnlocked(def: ChallengeDef): boolean {
-  const highest = getHighestActiveLayer()
-  return highest ? compareLayer(highest, def.unlockLayer) >= 0 : false
+  return resolveHeightRef(def.unlockLayer) != undefined
 }
 
 /**某挑战是否正在激活 */
@@ -101,15 +114,33 @@ export function completions(def: ChallengeDef): Decimal {
   return challengeCompletions(def.id)
 }
 
-/**目标资源所在层级 */
-export function challengeGoalLayer(def: ChallengeDef): LayerId {
-  return def.goalLayer ?? prevLayer(def.resetTarget)
+/**目标层坐标(高度精确匹配,否则上取整;高于所有层级时返回undefined) */
+export function challengeResetTarget(def: ChallengeDef): LayerId | undefined {
+  return resolveHeightRef(def.resetTarget)
 }
 
-/**某挑战当前的目标资源量 */
+/**目标资源所在层级坐标(缺省为目标层的下层) */
+export function challengeGoalLayer(def: ChallengeDef): LayerId | undefined {
+  if (def.goalLayer) return resolveHeightRef(def.goalLayer)
+  const target = challengeResetTarget(def)
+  return target ? prevLayer(target) : undefined
+}
+
+/**
+ * 某挑战当前的目标资源量
+ * 语义是"执行目标层重置所需的资源":0阶层级取其下层的点数(或能量);
+ * ≥1阶层级取"其下低阶层级的数量"(该分支随高阶层级实装后再校准,见层级系统.md)
+ */
 export function challengeResource(def: ChallengeDef): Decimal {
-  const pos = challengeGoalLayer(def)
-  return def.goalType == 'energy' ? getEnergy(pos) : getPoints(pos)
+  const target = challengeResetTarget(def)
+  if (!target) return new Decimal(0)
+  const order = getLayerOrder(target)
+  if (order > 0) {
+    return new Decimal(getOrderedLayers('asc').filter((e) => e.order < order).length)
+  }
+  const goal = challengeGoalLayer(def)
+  if (!goal) return new Decimal(0)
+  return def.goalType == 'energy' ? getEnergy(goal) : getPoints(goal)
 }
 
 /**某挑战下一次完成所需的目标值 */
@@ -135,9 +166,24 @@ export function challengeRewardValue(def: ChallengeDef): string {
 }
 
 //------操作------
-/**进入/退出挑战时强制重置目标层(无视升级u7/u8) */
+/**进入/退出挑战时强制重置目标层(无视升级u7/u8);目标层已不存在时不做重置 */
 function challengeReset(def: ChallengeDef) {
-  doReset(def.resetTarget, true, false, true)
+  const target = challengeResetTarget(def)
+  if (!target) return
+  doReset(target, true, false, true)
+}
+
+/**
+ * 退出解锁条件不再满足、或目标层已失效的激活挑战(高阶重置删层后必须上锁)
+ * 此时直接清除激活标记而不做重置,避免在缺失目标层时产生多余删层
+ */
+export function lockInvalidChallenges() {
+  for (const def of getAllChallenges()) {
+    if (!isActive(def)) continue
+    if (isUnlocked(def) && challengeResetTarget(def)) continue
+    player.activeChallenges = player.activeChallenges.filter((id) => id != def.id)
+    addLog('info', `挑战上锁：${def.name}`)
+  }
 }
 
 /**进入一个挑战:普通挑战互斥(先退出其它已激活的普通挑战),再加入激活列表并强制重置目标层 */
@@ -331,19 +377,19 @@ const CHALLENGES: ChallengeDef[] = [
     },
     rewardEffects: [
       {
-        target: 'production',
+        target: 'dimensionMult',
         type: 'mul',
         value: (ctx) => {
           const L = getLayer(ctx.pos)
-          return L ? L.resetTime.add(1).pow(challengeCompletions('c5').sqrt()) : 1
+          return L ? L.resetTime.add(1).pow(challengeCompletions('c5').sqrt().div(2)) : 1
         },
         text: '维度产量 x{value}',
       },
     ],
     rewardText: '维度随当前层级的重置时间变得更强',
-    //C5的数值随每层resetTime动态变化,故用公式展示,指数计算为sqrt(完成次数)
+    //C5的数值随每层resetTime动态变化,故用公式展示,指数计算为sqrt(完成次数)/2
     rewardValueText: () => {
-      const exp = challengeCompletions('c5').sqrt()
+      const exp = challengeCompletions('c5').sqrt().div(2)
       return `维度产量 x(1+t)^${format(exp)}`
     },
   },

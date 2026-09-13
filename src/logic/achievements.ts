@@ -22,7 +22,7 @@ import {
   type EffectDef,
   type RegisteredEffect,
 } from '@/compute/effects'
-import { addLog } from '@/app/log'
+import { addLog } from '@/data/log'
 import { NEWS_COUNT } from '@/app/news'
 import type { LayerId } from '@/data/types'
 import { compareLayer } from '@/tools/ordinal'
@@ -245,7 +245,7 @@ const normalAchievements: AchievementDef[] = [
   {
     id: 'a38',
     name: '半步无限',
-    description: '获得1.34e154(2^512)层级0点数',
+    description: '拥有至少1.34e154(2^512)层级0点数',
     reward: 25,
     isCompleted: () => getPoints([0]).gte(new Decimal(2).pow(512)),
   },
@@ -299,7 +299,7 @@ const normalAchievements: AchievementDef[] = [
   },
   {
     id: 'a45',
-    name: '我需要维度吗',
+    name: '维度1之力',
     description: '在层级0中，不购买维度2或更高的维度达到1e50点数',
     reward: 35,
     isCompleted: () => {
@@ -361,8 +361,7 @@ const normalAchievements: AchievementDef[] = [
     name: '新的开始',
     description: '进行一次无限重置',
     reward: 10,
-    isCompleted: () => player.infinityPoints.gte(1),
-    effectText: '解锁更多知识升级',
+    isCompleted: () => player.infinityResets.gte(1),
   },
   {
     id: 'a52',
@@ -381,10 +380,10 @@ const normalAchievements: AchievementDef[] = [
   },
   {
     id: 'a54',
-    name: '无尽轮回',
-    description: '无限重置至少10次',
-    reward: 77,
-    isCompleted: () => player.infinityResets.gte(10),
+    name: '双倍无限',
+    description: '拥有至少3.23e616层级0点数',
+    reward: 60,
+    isCompleted: () => getPoints([0]).gte('3.23e616'),
   },
   {
     id: 'a55',
@@ -392,25 +391,31 @@ const normalAchievements: AchievementDef[] = [
     description: '完成挑战5',
     reward: 64,
     isCompleted: () => challengeCompletions('c5').gte(1),
-    effectText: '解锁批量完成挑战的知识升级',
   },
   {
     id: 'a56',
-    name: '另一种维度?',
-    description: '购买无限升级"无限维度"',
-    reward: 88,
-    isCompleted: () => hasInfinityUpgrade('iu33'),
-  },
-  {
-    id: 'a57',
     name: '三倍体',
     description: '使层级0加倍器的效果底数>=3',
-    reward: 99,
+    reward: 66,
     isCompleted: () =>
       slotValue({ target: 'b12:base', init: () => 0.2 }, { pos: [0], id: 1 }).gte(3),
   },
   {
+    id: 'a57',
+    name: '另一种维度?',
+    description: '购买无限升级"无限维度"',
+    reward: 77,
+    isCompleted: () => hasInfinityUpgrade('iu33'),
+  },
+  {
     id: 'a58',
+    name: '无尽轮回',
+    description: '无限重置至少10次',
+    reward: 80,
+    isCompleted: () => player.infinityResets.gte(10),
+  },
+  {
+    id: 'a68',
     name: '百炼成钢',
     description: '完成挑战的总次数不少于100',
     reward: 100,

@@ -72,12 +72,12 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
   {
     id: 'iu13',
     name: '能量涌动',
-    description: '每购买1个无限升级,能量指数+0.008',
+    description: '每购买1个无限升级,能量指数+0.005',
     cost: 3,
     effect: {
       target: 'energy:base',
       type: 'add',
-      value: () => new Decimal(0.008).mul(infinityUpgradeCount()),
+      value: () => new Decimal(0.005).mul(infinityUpgradeCount()),
       text: '能量指数 +{value}',
     },
   },
@@ -178,13 +178,13 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     effect: {
       target: 'dimensionMult',
       type: 'mul',
-      base: { target: 'iu33:base', init: () => 0.3 },
-      value: (_ctx, base) => player.infinityRunTime.add(1).pow(base ?? new Decimal(0.3)),
+      base: { target: 'iu33:base', init: () => 0.5 },
+      value: (_ctx, base) => player.infinityRunTime.add(1).pow(base ?? new Decimal(0.5)),
       text: '所有维度乘数 x{value}',
     },
     //效果文本用槽位组合值计算(iu43会提升指数),直接读取实时值
     effectText() {
-      const base = slotValue({ target: 'iu33:base', init: () => 0.3 }, { pos: [0], id: 0 })
+      const base = slotValue({ target: 'iu33:base', init: () => 0.5 }, { pos: [0], id: 0 })
       return `所有维度乘数 x${format(player.infinityRunTime.add(1).pow(base))}`
     },
   },

@@ -24,3 +24,15 @@ export const DEFAULT_BOOST_SPEED: number = 1
 export const ENERGY_BONUS_EXPONENT: number = 0.2
 /**升级u1(点数作用)的指数,对数式点数加成 */
 export const U1_POINTS_EXPONENT: number = 2
+/**0阶层级重置的下层门槛基准值(gap=1时):下层面板为层级0时的门槛 */
+export const PRESTIGE_THRESHOLD_LAYER0: number = 1e16
+/**0阶层级重置的下层门槛基准值(gap=1时):下层为普通层级时的门槛 */
+export const PRESTIGE_THRESHOLD: number = 1e4
+/**0阶层级重置的收益指数基准值(gap=1时):下层为层级0时的指数 */
+export const PRESTIGE_EXPONENT_LAYER0: number = 0.125
+/**0阶层级重置的收益指数基准值(gap=1时):下层为普通层级时的指数 */
+export const PRESTIGE_EXPONENT: number = 0.25
+/**跨层奖励底数的初始值(仅用于加成,可被全局加成修饰) */
+export const CROSS_LAYER_REWARD_BASE: number = 2
+/**跨层惩罚底数的初始值(仅用于重置门槛与收益指数,可被全局加成修饰) */
+export const CROSS_LAYER_PENALTY_BASE: number = 4

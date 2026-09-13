@@ -1,0 +1,208 @@
+//层级结构变更的唯一入口(写状态)
+//规则(详见 docs/面向开发者/层级系统.md):
+//- 只有本模块可以增删 player.layers 的键;层级平移只能作为重置过程的副产物出现
+//- 键一律经 layerKey(规范化坐标)生成,保证同一槽位只有一种写法
+//- 临时层(-1)只是"将要解锁的最高层级"的预览:不参与生产、不提供加成、没有自动化配置
+//- 每帧的结构阶段先于生产阶段执行,保证一帧内层级结构稳定
+import Decimal from 'break_eternity.js'
+import { player } from '@/data/player'
+import { temp } from '@/data/temp'
+import { initializeLayer, type Layer, type LayerId } from '@/data/types'
+import {
+  getLayer,
+  getOrderedLayers,
+  highestActiveLayer,
+  invalidateLayerOrder,
+  isActive,
+  prevLayer,
+} from '@/access'
+import { hasLayerContent } from '@/compute/layerContent'
+import { addLog } from '@/data/log'
+import {
+  compareLayer,
+  getLayerIndex,
+  getLayerOrder,
+  isLayer0,
+  layerKey,
+  nextLayer,
+  pinnedSlotCount,
+  shiftLayer,
+} from '@/tools/ordinal'
+
+//------结构阶段------
+/**
+ * 一帧的结构阶段:同步全部临时层
+ * 临时层只更新高度(窗口内最高真实层级高度+1)或按需创建,不参与生产/加成/自动化
+ */
+export function syncLayerStructure() {
+  syncTempLayers([0], player.layerDepth - 1)
+}
+/**递归同步各阶窗口的临时层 */
+function syncTempLayers(pos: LayerId, n: number) {
+  if (n > 0) {
+    for (let i = 0; i < player.base; i++) {
+      const pos1 = shiftLayer(pos, n, i)
+      if (isActive(pos1)) syncTempLayers(pos1, n - 1)
+    }
+  }
+  const posh = highestActiveLayer(pos, n)
+  syncTempLayer(posh, n)
+}
+/**
+ * 同步单个窗口的临时层:更新其高度,不存在则创建
+ * 临时层坐标 = 该窗口的槽位-1(基础窗口的[-1]、[1,·]窗口的[1,-1]、ω窗口的[-1,0])
+ */
+function syncTempLayer(pos: LayerId, n: number = 0) {
+  const L = getLayer(pos)
+  if (!L) return
+  const pos1 = shiftLayer(pos, n, -1)
+  const newLevel = L.level.add(1)
+  const tempL = getLayer(pos1)
+  if (!tempL) {
+    temp.tempLayers[layerKey(pos1)] = initializeLayer(newLevel)
+  } else {
+    tempL.level = newLevel
+  }
+}
+
+//------删层(重置作用域)------
+/**
+ * 重置一个层级时的删层范围:删除开区间(prevLayer(layer), layer)内的全部层级
+ * 返回下层目标(调用方随后对其执行清空与级联重置)
+ * 注:0阶层级的下层就是相邻槽位,区间为空,故只清空不删层
+ */
+export function wipeLayerScope(layer: LayerId): LayerId {
+  const prev = prevLayer(layer)
+  const doomed = getOrderedLayers('asc').filter(
+    (e) => compareLayer(e.pos, prev) > 0 && compareLayer(e.pos, layer) < 0,
+  )
+  for (const e of doomed) delete player.layers[e.key]
+  if (doomed.length > 0) invalidateLayerOrder()
+  return prev
+}
+/**
+ * 删除所有满足条件的层级(无限重置/因子转换用),返回删除数量
+ * 作用域必须由调用方按阶显式声明:无限重置只删0阶层级,因子转换删所有非零层级
+ */
+export function wipeLayersWhere(pred: (pos: LayerId, L: Layer) => boolean): number {
+  let count = 0
+  for (const e of getOrderedLayers('asc')) {
+    if (pred(e.pos, e.L)) {
+      delete player.layers[e.key]
+      count++
+    }
+  }
+  if (count > 0) invalidateLayerOrder()
+  return count
+}
+
+/**把层级0重建为全新初始状态(元层重置用) */
+export function recreateLayer0() {
+  player.layers['0'] = initializeLayer(0, true)
+}
+
+//------解锁新层级------
+/**把自动化配置随层级对象一起从fromKey搬到toKey(无配置则跳过) */
+function moveAutomation(fromKey: string, toKey: string) {
+  const cfg = player.automations[fromKey]
+  if (cfg) player.automations[toKey] = cfg
+  delete player.automations[fromKey]
+}
+
+/**
+ * 解锁下一个层级:把临时层转为真实层级并重建临时层
+ * 窗口未满:新层级直接占用下一个槽位
+ * 窗口已满:底部pinnedSlotCount个槽位固定,顶部槽位整体下移一格(最低的那个被淘汰)
+ * 自动化配置跟随层级对象搬移(临时层的配置转给新层级;新临时层按全局配置重建)
+ * 阶内容未定义时拒绝解锁,避免高阶层级静默套用低阶公式
+ * @returns 新层级坐标(同时把视角切到新层级);未解锁时返回原临时层坐标
+ */
+export function unlockNextLayer(tempPos: LayerId): LayerId {
+  const L = getLayer(tempPos)
+  if (!L) return tempPos
+  const n = getLayerOrder(tempPos)
+  if (!hasLayerContent(n)) {
+    addLog('warning', `层级阶${n}的内容尚未定义,已阻止解锁新层级`)
+    return tempPos
+  }
+  const tempKey = layerKey(tempPos)
+  const posh = highestActiveLayer(tempPos, n)
+  const idx = getLayerIndex(posh, n)
+  let realPos: LayerId
+  if (idx < player.base - 1) {
+    //窗口未满:新层级接在同一窗口的下一个槽位(同阶,故用nextLayer(posh, n))
+    realPos = nextLayer(posh, n)
+    player.layers[layerKey(realPos)] = L
+    moveAutomation(tempKey, layerKey(realPos))
+  } else {
+    //窗口已满:顶部槽位整体下移一格,新层级进入最高槽位
+    for (let i = pinnedSlotCount(player.base); i < player.base - 1; i++) {
+      const pos1 = shiftLayer(tempPos, n, i)
+      const pos2 = shiftLayer(tempPos, n, i + 1)
+      const moved = getLayer(pos2)
+      //源槽位在满窗口下必然存在;缺失时删除目标键,层级表不保留空占位
+      if (moved) player.layers[layerKey(pos1)] = moved
+      else delete player.layers[layerKey(pos1)]
+      //自低向高搬移,避免覆盖尚未搬走的配置
+      moveAutomation(layerKey(pos2), layerKey(pos1))
+    }
+    realPos = posh.slice()
+    player.layers[layerKey(realPos)] = L
+    moveAutomation(tempKey, layerKey(realPos))
+  }
+  //重建临时层(预览下一层):其高度为新顶层高度+1,无需等下一次结构阶段校正
+  temp.tempLayers[tempKey] = initializeLayer(L.level.add(1))
+  invalidateLayerOrder()
+  //临时层转为真实层级后跳转到新层级,方便玩家在新层级购买等操作
+  player.layerSubtab = realPos
+  return realPos
+}
+
+//------不变量自检(调试模式)------
+/**上次报告的结构不变量问题(避免每帧刷屏) */
+let lastInvariantReport = ''
+/**
+ * 检查结构不变量,返回问题列表(无问题时为空)
+ * I1 键必须是规范坐标(去前导零,全零即'0'),且长度不超过layerDepth(否则选择矩阵显示不到它)
+ * I2 同一窗口(同祖先层序列 + 同槽位位权)内槽位的高度严格递增
+ * I3 除层级0外每个层级都存在前驱(不指向自身)
+ * I4 player.layers中不含临时层坐标
+ * 注:只在报告内容变化时输出,便于调试模式下每帧调用
+ */
+export function checkLayerInvariants(): string[] {
+  const errors: string[] = []
+  const list = getOrderedLayers('asc')
+  for (const e of list) {
+    const canonical = layerKey(e.pos)
+    if (canonical != e.key) errors.push(`I1 键${e.key}不是规范坐标(应为${canonical})`)
+    if (e.pos.length > player.layerDepth)
+      errors.push(`I1 坐标${e.key}长度${e.pos.length}>世界深度${player.layerDepth}`)
+    if (e.pos.includes(-1)) errors.push(`I4 临时层坐标${e.key}出现在player.layers中`)
+    if (!isLayer0(e.pos) && prevLayer(e.pos).toString() == e.pos.toString())
+      errors.push(`I3 层级${e.key}的前驱指向自身`)
+  }
+  //按窗口分组检查高度递增。窗口 = (祖先层序列, 自己槽位所在的位权),
+  //两者都要进键:规范坐标长度不固定,光看祖先序列会把"基础窗口"与"ω窗口"混为一组
+  const windows = new Map<string, { pos: LayerId; level: Decimal }[]>()
+  for (const e of list) {
+    const prefix = e.pos.slice(0, e.pos.length - e.order - 1)
+    const group = windows.get(`${e.order}|${prefix.toString()}`) || []
+    group.push({ pos: e.pos, level: e.L.level })
+    windows.set(`${e.order}|${prefix.toString()}`, group)
+  }
+  for (const [windowKey, group] of windows) {
+    group.sort((a, b) => compareLayer(a.pos, b.pos))
+    for (let i = 1; i < group.length; ++i) {
+      const lo = group[i - 1]
+      const hi = group[i]
+      if (lo && hi && !hi.level.gt(lo.level))
+        errors.push(
+          `I2 窗口[${windowKey}]内高度未严格递增:${lo.pos}(${lo.level})→${hi.pos}(${hi.level})`,
+        )
+    }
+  }
+  const report = errors.join('\n')
+  if (report == lastInvariantReport) return []
+  lastInvariantReport = report
+  return errors
+}

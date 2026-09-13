@@ -19,7 +19,14 @@ export interface Layer {
   /**第一项为总数，第二项为购买数量*/
   dimensions: [Decimal, Decimal][]
 }
-export type LayerList = Record<string, Layer | null>
+/**层级表:键为坐标字符串,值一律是层级对象(不存在空占位) */
+export type LayerList = Record<string, Layer>
+/**
+ * 层级坐标(槽位路径):规范形式是"去前导零的系数序列",全零即[0](层级0)
+ * 每一位是该层路径上某一级窗口的槽位号,最高位是它最早进入的那一级;坐标与player.layerDepth无关
+ * 阶 = 自己槽位所在位的权重(例:[5]与[1,5]都是0阶、[1,0]是1阶);存档键为 layerKey(pos)(见tools/ordinal)
+ * 只表示相对位置、仅用于寻址;规则详见docs/面向开发者/层级系统.md
+ */
 export type LayerId = number[]
 /**层级的引用:层级坐标或层级对象;需要接受undefined的调用处显式写"LayerRef | undefined" */
 export type LayerRef = LayerId | Layer
@@ -49,9 +56,6 @@ export function initializeLayer(level: DecimalSource, isLayer0: boolean = false)
   initializeDimensions(layer)
   return layer
 }
-/**一个空层级，防止getLayer返回undefined */
-export const nullLayer = initializeLayer(0)
-nullLayer.active = false
 
 //------自动化类型------
 /**所有自动化的公共配置 */

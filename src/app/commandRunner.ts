@@ -1,7 +1,7 @@
 //指令执行(UI编排):解析"/"开头的指令→调用logic/commands→弹答题对话框→写日志
 //指令均为ascii字符,不能使用中文
 import { player } from '@/data/player'
-import { addLog } from '@/app/log'
+import { addLog } from '@/data/log'
 import { hasKnowledge } from '@/compute/knowledge'
 import { openQuiz } from '@/app/dialog'
 import {

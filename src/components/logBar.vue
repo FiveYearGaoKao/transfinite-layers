@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { logs, clearLogs } from '@/app/log'
+import { logs, clearLogs } from '@/data/log'
 import { settings } from '@/app/settings'
 
 /**按设置过滤后的日志 */

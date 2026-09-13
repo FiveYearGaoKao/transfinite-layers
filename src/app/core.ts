@@ -1,12 +1,15 @@
 //游戏循环的核心函数
 import Decimal from 'break_eternity.js'
 import { player } from '@/data/player'
+import { temp } from '@/data/temp'
 import { addValue, localSave } from '@/save/save'
 import { updateLayers, applyChallengePenalties } from '@/logic/update'
 import { updateAutomations } from '@/logic/automations'
+import { lockInvalidChallenges } from '@/logic/challenges'
+import { checkLayerInvariants, syncLayerStructure } from '@/logic/layerStructure'
 import { getMetaLayers } from '@/meta/registry'
 import { updateAchievements } from '@/logic/achievements'
-import { addLog } from '@/app/log'
+import { addLog } from '@/data/log'
 import { formatTime } from '@/tools/format'
 import { settings } from '@/app/settings'
 import { getPsdSpeed, hasKnowledge } from '@/compute/knowledge'
@@ -28,15 +31,32 @@ export function autoSaveLoop() {
     addLog('info', '游戏已保存')
   }
 }
+/**上次报告的层级结构不变量问题(避免每帧刷屏) */
+let lastInvariantReport = ''
+/**调试模式:检查层级结构不变量,发现新问题才写日志 */
+function reportInvariantErrors() {
+  const errors = checkLayerInvariants()
+  const report = errors.join('\n')
+  if (report == lastInvariantReport) return
+  lastInvariantReport = report
+  if (report) addLog('warning', `层级结构不变量异常:\n${report}`)
+}
+
 /**游戏循环，dt以秒为单位
- * 一帧内顺序(全局三段式):所有层生产→元层tick→所有层自动化→挑战C5等每帧惩罚→成就检查
+ * 一帧内顺序(全局三段式):结构阶段→所有层生产→元层tick→所有层自动化→挑战锁定→挑战C5等每帧惩罚→成就检查
  */
 function gameLoop(dt: Decimal) {
   dt = dt.mul(getPsdSpeed())
   addValue('totalTime', dt)
+  //结构阶段:同步临时层(仅预览层的高度),保证本帧内层级结构稳定
+  syncLayerStructure()
+  if (temp.debugMode) reportInvariantErrors()
   updateLayers(dt)
   for (const meta of getMetaLayers()) meta.onTick(dt)
+  //自动化:从低到高遍历,每层的收益在轮到它时即时计算(一帧内可连续晋升多层)
   updateAutomations(dt)
+  //挑战锁定:高阶重置删层后,解锁条件不再满足的激活挑战必须退出并上锁
+  lockInvalidChallenges()
   applyChallengePenalties(dt)
   updateAchievements()
 }

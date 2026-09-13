@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { format, formatWhole } from '@/tools/format'
-import { getLayer, getLayerName, dimensionAmount, prevLayer } from '@/access'
+import { getLayer, getLayerName, dimensionAmount, levelGap, prevLayer } from '@/access'
 import { getLayerOrder, isLayer0 } from '@/tools/ordinal'
 import { dimensionCost, dimensionExponent, dimensionMultiplier } from '@/compute/dimensions'
 import { getBuyables, isUnlocked as isBuyableUnlocked } from '@/compute/buyables'
 import { getUpgrades, isUnlocked as isUpgradeUnlocked } from '@/compute/upgrades'
 import { energyBonus } from '@/compute/energy'
+import { canReset, resetGain } from '@/compute/prestige'
+import { crossLayerFactor, crossLayerPenalty, crossLayerReward } from '@/compute/crossLayer'
 import { buyDimension, buyDimensionMax, canAfford, maxBuyAll } from '@/logic/purchase'
 import {
   dimsAutoUnlocked,
@@ -15,7 +17,6 @@ import {
   toggleAutoItem,
   toggleResetAuto,
 } from '@/logic/automations'
-import { canReset, resetGain } from '@/compute/prestige'
 import { hasKnowledge } from '@/compute/knowledge'
 import { resetLayerConfirm, resetRunConfirm } from '@/app/uiActions'
 import { settings, saveSettings } from '@/app/settings'
@@ -40,6 +41,22 @@ watch(
 )
 /**当前层能量给低层维度的加成数值 */
 const layerEnergyBonus = computed(() => energyBonus(player.layerSubtab))
+/**跨层重置提示:与下层间隔>1层时显示(惩罚侧按k次幂,奖励侧按k次幂强化) */
+const crossLayerInfo = computed(() => {
+  const pos = player.layerSubtab
+  if (isLayer0(pos)) return ''
+  const gap = levelGap(pos)
+  if (gap.lte(1)) return ''
+  const lowerName = getLayerName(prevLayer(pos))
+  //惩罚侧倍率k = penalty^(gap-1):重置需求取k次幂、收益指数除以k
+  const k = formatWhole(crossLayerFactor(gap, crossLayerPenalty()))
+  //奖励侧倍率 = reward^(gap-1):本层对下层的加成取该次幂
+  const rewarded = formatWhole(crossLayerFactor(gap, crossLayerReward()))
+  return (
+    `由于和${lowerName}间隔${format(gap, 0)}层：重置需求^${k}、收益指数÷${k}，` +
+    `但本层对${lowerName}提供的加成取 ${rewarded} 次幂`
+  )
+})
 /**当前层级可显示的可购买 */
 const buyableList = computed(() =>
   getBuyables(getLayerOrder(player.layerSubtab)).filter((b) =>
@@ -116,6 +133,7 @@ function buyDim(id: number) {
         getLayerName(prevLayer(player.layerSubtab))
       }}维度生产 <span class="text-highlight">x{{ format(layerEnergyBonus) }}</span></span
     >
+    <span v-if="crossLayerInfo" class="text crossLayerHint">{{ crossLayerInfo }}</span>
 
     <br />
     <div id="dimensionTable">
@@ -273,6 +291,12 @@ span.sectionTitle {
   color: var(--dim);
   border-bottom: 1px solid var(--faint);
   padding-bottom: 2px;
+}
+/*跨层重置提示:与下层间隔>1层时显示*/
+span.crossLayerHint {
+  font-size: 12px;
+  color: var(--accent);
+  text-align: center;
 }
 /*窄屏:统一表格列宽自适应，所有行列宽一致*/
 @media (max-width: 700px) {

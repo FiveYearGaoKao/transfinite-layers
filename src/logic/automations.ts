@@ -3,7 +3,7 @@
 //解锁知识升级auto-global-config后启用"全局配置"模板:新创建的层级配置按模板填充,并可一键应用到所有层级(见下方"全局配置"节)
 import Decimal from 'break_eternity.js'
 import { player } from '@/data/player'
-import { getLayer, higherLayer, prevLayer } from '@/access'
+import { getLayer, forEachLayer, getOrderedLayers, prevLayer, type LayerEntry } from '@/access'
 import {
   defaultAutoBuy,
   defaultAutoReset,
@@ -14,7 +14,7 @@ import {
   type LayerAutomation,
   type LayerId,
 } from '@/data/types'
-import { getLayerOrder, posArray } from '@/tools/ordinal'
+import { getLayerOrder, layerKey, nextLayer } from '@/tools/ordinal'
 import { hasKnowledge, knowledgeAmount } from '@/compute/knowledge'
 import { canBuyUpgrade, getUpgrades, hasUpgrade, upgradeCost } from '@/compute/upgrades'
 import { canReset, resetGain } from '@/compute/prestige'
@@ -111,9 +111,9 @@ export function applyGlobalAuto(typeId: string) {
   if (!hasKnowledge('auto-global-config')) return
   const tpl = getGlobalAutomation().cfgs[typeId]
   if (!tpl) return
-  for (const key of Object.keys(player.layers)) {
-    getLayerAutomation(posArray(key)).cfgs[typeId] = cloneCfg(tpl)
-  }
+  forEachLayer('asc', (e) => {
+    getLayerAutomation(e.pos).cfgs[typeId] = cloneCfg(tpl)
+  })
 }
 /**将全局配置模板的全部类型应用到所有(真实)层级 */
 export function applyAllGlobalAuto() {
@@ -123,7 +123,7 @@ export function applyAllGlobalAuto() {
 //------配置访问------
 /**获取某层的自动化配置，不存在或结构缺失则创建默认 */
 export function getLayerAutomation(pos: LayerId): LayerAutomation {
-  const key = pos.toString()
+  const key = layerKey(pos)
   if (!player.automations) player.automations = {}
   let auto = player.automations[key]
   if (!auto) {
@@ -154,15 +154,15 @@ export function getLayerAutomation(pos: LayerId): LayerAutomation {
 }
 
 //------解锁判断------
-/**某层维度自动购买是否解锁(上层购买u4) */
+/**某层维度自动购买是否解锁(0阶来源层nextLayer(pos,0)购买u4) */
 export function dimsAutoUnlocked(pos: LayerId): boolean {
-  const higher = higherLayer(pos)
-  return higher ? hasUpgrade(higher, 4) : false
+  const source = nextLayer(pos, 0)
+  return getLayer(source) != undefined && hasUpgrade(source, 4)
 }
-/**某层可购买自动购买是否解锁(上层购买u5) */
+/**某层可购买自动购买是否解锁(0阶来源层nextLayer(pos,0)购买u5) */
 export function buyablesAutoUnlocked(pos: LayerId): boolean {
-  const higher = higherLayer(pos)
-  return higher ? hasUpgrade(higher, 5) : false
+  const source = nextLayer(pos, 0)
+  return getLayer(source) != undefined && hasUpgrade(source, 5)
 }
 /**某层自动重置是否解锁(本层购买u6) */
 export function resetAutoUnlocked(pos: LayerId): boolean {
@@ -198,7 +198,7 @@ export function toggleResetAuto(pos: LayerId) {
 }
 /**某层是否有自动化处于激活状态 */
 export function isLayerAutoActive(pos: LayerId): boolean {
-  const auto = player.automations[pos.toString()]
+  const auto = player.automations[layerKey(pos)]
   if (!auto) return false
   return AUTOMATIONS.some((def) => {
     const cfg = auto.cfgs[def.id]
@@ -207,8 +207,7 @@ export function isLayerAutoActive(pos: LayerId): boolean {
 }
 /**全部层级是否有自动化处于激活状态 */
 export function isAllAutoActive(): boolean {
-  const keys = Object.keys(player.layers)
-  return keys.some((k) => isLayerAutoActive(posArray(k)))
+  return getOrderedLayers('asc').some((e) => isLayerAutoActive(e.pos))
 }
 /**本层全部自动化一键开关(至少一个开→全关，全关→全开) */
 export function toggleLayerAuto(pos: LayerId) {
@@ -225,39 +224,40 @@ export function toggleLayerAuto(pos: LayerId) {
 /**全部层级自动化一键开关 */
 export function toggleAllAuto() {
   const anyOn = isAllAutoActive()
-  for (const key of Object.keys(player.layers)) {
-    const pos = posArray(key)
-    const auto = getLayerAutomation(pos)
+  forEachLayer('asc', (e) => {
+    const auto = getLayerAutomation(e.pos)
     for (const def of AUTOMATIONS) {
       const cfg = auto.cfgs[def.id]
-      if (cfg) def.setAll(pos, cfg, !anyOn)
+      if (cfg) def.setAll(e.pos, cfg, !anyOn)
     }
-  }
+  })
 }
 
 //------执行逻辑------
-/**更新自动化系统，dt以秒为单位 */
+/**
+ * 更新自动化系统，dt以秒为单位
+ * 顺序:从低到高(第0层先处理),且每层的收益/条件在轮到它时才计算(不做快照),
+ * 这样一帧之内可以连续向上晋升多层(单趟正序即可,无需多趟)
+ */
 export function updateAutomations(_dt: Decimal) {
-  for (const key of Object.keys(player.layers)) {
-    updateLayerAutomation(posArray(key))
-  }
+  forEachLayer('asc', updateLayerAutomation)
 }
 /**更新单个层级的自动化 */
-function updateLayerAutomation(pos: LayerId) {
-  const auto = player.automations[pos.toString()]
+function updateLayerAutomation(e: LayerEntry) {
+  const auto = player.automations[layerKey(e.pos)]
   if (!auto) return
-  const L = getLayer(pos)
-  if (!L || !L.active) return
+  const L = e.L
+  if (!L.active) return
   //收集已开启且已解锁的项，按优先级排序
   const items = AUTOMATIONS.filter((def) => {
-    if (!def.isUnlocked(pos)) return false
+    if (!def.isUnlocked(e.pos)) return false
     const cfg = auto.cfgs[def.id]
     if (!cfg) return false
     return def.isActive(cfg)
   }).sort((a, b) => (auto.cfgs[a.id]?.priority ?? 0) - (auto.cfgs[b.id]?.priority ?? 0))
   for (const def of items) {
     const cfg = auto.cfgs[def.id]
-    if (cfg) def.onTick(pos, cfg)
+    if (cfg) def.onTick(e.pos, cfg)
   }
 }
 /**实际购买数量模式:"买最大"需解锁知识升级auto-batch */

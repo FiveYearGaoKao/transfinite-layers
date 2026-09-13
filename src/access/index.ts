@@ -1,53 +1,12 @@
 //只读访问层级数据(以及少量写入维度的便捷函数)
+//层级结构、坐标/高度与相邻关系的权威实现在layerGraph中,这里统一重导出,保证'@/access'仍是单一入口
 import Decimal, { type DecimalSource } from 'break_eternity.js'
 import { player } from '@/data/player'
-import { type Layer, type LayerId, type LayerRef } from '@/data/types'
-import { formatWhole } from '@/tools/format'
-import {
-  compareLayer,
-  getLayerIndex,
-  getLayerOrder,
-  isLayer0,
-  posArray,
-  shiftLayer,
-} from '@/tools/ordinal'
-import { temp } from '@/app/temp'
+import { type LayerId, type LayerRef } from '@/data/types'
+import { getLayerIndex, isLayer0, shiftLayer } from '@/tools/ordinal'
+import { getLayer, getLayerName, getOrderedLayers } from './layerGraph'
 
-/**获取某一层的引用 */
-export function getLayer(pos: LayerId | string): Layer | undefined {
-  const pos1 = pos.toString()
-  if (pos1.indexOf('-1') >= 0) return temp.tempLayers[pos1] || undefined
-  else return player.layers[pos1] || undefined
-}
-
-/**判断某层是否启用 */
-export function isActive(pos: LayerId): boolean {
-  return getLayer(pos)?.active || false
-}
-/**
- * 获取层级的名称
- * @param hide 最后多少位用星号"*"代替,至少有hide个星号
- */
-export function getLayerName(pos: LayerId, hide: number = 0): string {
-  const l = pos.length
-  const layerNames: string[] = new Array(Math.max(l, hide)).fill('*')
-  const pos1: LayerId = new Array(l).fill(0)
-  for (let i = 0; i < l - hide; ++i) {
-    if (pos[i] != 0) {
-      pos1[i] = pos[i] || 0
-      const layer1 = getLayer(pos1)
-      if (layer1 == undefined) {
-        //如果任意一个父层级不存在，则返回层级未解锁
-        return '层级未解锁'
-      } else {
-        layerNames[i] = formatWhole(layer1.level)
-      }
-    } else {
-      layerNames[i] = '0'
-    }
-  }
-  return '层级' + layerNames.join(',')
-}
+export * from './layerGraph'
 
 /**层级选择矩阵中的一个按钮项 */
 export interface LayerRow {
@@ -134,74 +93,9 @@ export function buyableTotalBought(layer: LayerRef | undefined): Decimal {
 export function getBase(): number {
   return player.base
 }
-/**获取编号最大的形如pos+ω^n*k的层级 */
-export function highestActiveLayer(pos: LayerId, n: number = 0): LayerId {
-  let k = player.base - 1
-  let pos1: LayerId = shiftLayer(pos, n, 0)
-  while (k >= 0) {
-    pos1 = shiftLayer(pos, n, k)
-    if (isActive(pos1)) break
-    k--
-  }
-  return pos1
-}
-/**获取一个层级的前驱层级 */
-export function prevLayer(pos: LayerId): LayerId {
-  const n = getLayerOrder(pos)
-  const idx = getLayerIndex(pos, n)
-  if (idx > 0) {
-    return shiftLayer(pos, n, idx - 1)
-  } else if (idx < 0) {
-    return highestActiveLayer(pos, n)
-  } else {
-    return pos.slice()
-  }
-}
-/**所有活跃层级的引用(供资源展示/挑战豁免等共用) */
-export function getActiveLayers(): { key: string; pos: LayerId; L: Layer }[] {
-  const list: { key: string; pos: LayerId; L: Layer }[] = []
-  for (const key of Object.keys(player.layers)) {
-    const pos = posArray(key)
-    const L = getLayer(pos)
-    if (L?.active) list.push({ key, pos, L })
-  }
-  return list
-}
-/**当前最高的活跃层级(全局最大,无活跃层返回undefined) */
-export function getHighestActiveLayer(): LayerId | undefined {
-  let highest: LayerId | undefined
-  for (const { pos } of getActiveLayers()) {
-    if (!highest || compareLayer(pos, highest) > 0) highest = pos
-  }
-  return highest
-}
-/**获取层级在层级链中的深度(从层级0沿prevLayer数) */
-export function getLayerDepth(pos: LayerId): number {
-  let depth = 0
-  let p = pos
-  while (!isLayer0(p)) {
-    const prev = prevLayer(p)
-    if (prev.toString() == p.toString()) break
-    p = prev
-    depth++
-  }
-  return depth
-}
-/**获取以pos为下层的上层层级(游戏当前为线性链，至多一个) */
-export function higherLayer(pos: LayerId): LayerId | undefined {
-  for (const key of Object.keys(player.layers)) {
-    const p = posArray(key)
-    if (p.toString() == pos.toString()) continue
-    if (prevLayer(p).toString() == pos.toString()) return p
-  }
-  return undefined
-}
 /**是否有任意层购买了指定升级 */
 export function hasAnyUpgrade(id: number): boolean {
-  for (const key of Object.keys(player.layers)) {
-    if (getLayer(posArray(key))?.upgrades.includes(id)) return true
-  }
-  return false
+  return getOrderedLayers('asc').some((e) => e.L.upgrades.includes(id))
 }
 /**是否已解锁指定成就 */
 export function hasAchievement(id: string): boolean {

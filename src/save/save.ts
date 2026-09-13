@@ -4,13 +4,15 @@ import { ref } from 'vue'
 import { compressToBase64, decompressFromBase64 } from 'lz-string'
 import { player, type Player, initializeSave } from '@/data/player'
 import { gameName, gameVersion, EARLIEST_SAVE_TIME, SAVE_SLOT_COUNT } from '@/data/constants'
-import { getLayer } from '@/access'
+import { getLayer, invalidateLayerOrder } from '@/access'
+import { clearTempLayers } from '@/data/temp'
 import { unlockAchievementById } from '@/logic/achievements'
 import { seedRng } from './rng'
 import { migrate } from './migration'
 import { checkCode, CHECKSUM_VERSION, CHECKSUM_SALT } from './checksum'
 import { versionComp } from '@/tools/utils'
-import { addLog } from '@/app/log'
+import { layerKey, posArray } from '@/tools/ordinal'
+import { addLog } from '@/data/log'
 
 //------存档槽位------
 const CURRENT_SLOT_KEY = gameName + '-slot'
@@ -138,6 +140,30 @@ function unmarkDecimals(obj: unknown): unknown {
   }
   return obj
 }
+/**
+ * 规范层级键:把补零等非规范写法归一化,并删除非法键、含-1的键与空值
+ * 层级表只存层级对象(无空占位),且同一槽位只能有一种写法,否则会破坏顺序索引与键查找
+ * 规范化是无损的(如'0,5'→'5'、'0,0'→'0'),故旧档的补零键按迁移处理而不是丢弃;
+ * 归一化后与已有键重合时保留先到的那一个
+ */
+function sanitizeLayers() {
+  for (const key of Object.keys(player.layers)) {
+    const L = player.layers[key]
+    const pos = posArray(key)
+    const valid =
+      L != null && pos.length > 0 && pos.every((d) => Number.isInteger(d) && d >= 0)
+    if (!valid) {
+      delete player.layers[key]
+      continue
+    }
+    const canonical = layerKey(pos)
+    if (canonical == key) continue
+    delete player.layers[key]
+    if (player.layers[canonical] == null) player.layers[canonical] = L
+    else addLog('warning', `存档中存在重复层级(${key}与${canonical}),已保留${canonical}`)
+  }
+}
+
 /**校验存档的校验码(与stringify共用同一序列化基准) */
 function verifySave(saveFile: Player): boolean {
   const previous = saveFile.checkCode
@@ -192,6 +218,10 @@ function load(s: string): number {
     //结构性校验(游戏未发布,无旧档迁移;缺失字段由initializeSave默认值覆盖)
     if (!(player.seed >= 0)) player.seed = 0
     if (!['warp', 'store', 'ask'].includes(player.offlineMode)) player.offlineMode = 'warp'
+    //层级结构校验:丢弃非规范键;临时层不存档,清空后由下一次结构阶段按新层级重建
+    sanitizeLayers()
+    clearTempLayers()
+    invalidateLayerOrder()
     if (getLayer(player.layerSubtab) == null) player.layerSubtab = [0]
     seedRng(player.rngState ?? player.seed)
     return 0
@@ -221,6 +251,8 @@ export function importSaveString(s: string): boolean {
 /**硬重置 */
 export function hardReset() {
   Object.assign(player, initializeSave())
+  clearTempLayers()
+  invalidateLayerOrder()
   addLog('info', '游戏已重置')
   localSave()
 }

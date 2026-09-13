@@ -10,10 +10,10 @@ import {
   getLayer,
   getPoints,
   hasAchievement,
-  higherLayer,
+  levelGap,
   prevLayer,
 } from '@/access'
-import { compareLayer, isLayer0 } from '@/tools/ordinal'
+import { compareLayer, isLayer0, nextLayer } from '@/tools/ordinal'
 import { format } from '@/tools/format'
 import {
   effectText,
@@ -22,6 +22,7 @@ import {
   type EffectDef,
   type RegisteredEffect,
 } from './effects'
+import { crossLayerExponentBonus } from './crossLayer'
 import { DIMENSION_COUNT, U1_POINTS_EXPONENT } from '@/data/constants'
 
 /**u3额外加速器:本层已购维度总等级×0.2 + 已购升级数量 */
@@ -70,16 +71,23 @@ export const UPGRADES: UpgradeDef[] = [
       type: 'mul',
       base: { target: 'u1:base', init: () => U1_POINTS_EXPONENT },
       value(ctx, base) {
-        const higher = higherLayer(ctx.pos)
-        return higher ? u1Formula(getPoints(higher), base ?? new Decimal(1)) : 1
+        //0阶内容的加成来源:nextLayer(pos,0)(同窗口的下一槽位),来源不存在则不生效
+        //跨层时该来源的加成被强化为 value^reward^(gap-1),即指数×reward^(gap-1)
+        const source = nextLayer(ctx.pos, 0)
+        const S = getLayer(source)
+        if (!S || !hasUpgrade(source, 1)) return 1
+        const exponent = crossLayerExponentBonus(base ?? new Decimal(1), levelGap(source))
+        return u1Formula(S.points, exponent)
       },
       isActive: (ctx) => {
-        const higher = higherLayer(ctx.pos)
-        return !!higher && hasUpgrade(higher, 1)
+        const source = nextLayer(ctx.pos, 0)
+        return !!getLayer(source) && hasUpgrade(source, 1)
       },
     },
     effectText(layer: LayerId): string {
-      return `x${format(u1Formula(getPoints(layer), u1Exponent()))}`
+      //本层(已购u1)对下层的加成数值,含跨层强化
+      const exponent = crossLayerExponentBonus(u1Exponent(), levelGap(layer))
+      return `x${format(u1Formula(getPoints(layer), exponent))}`
     },
     isUnlocked: (layer: LayerId) => !isLayer0(layer),
   },

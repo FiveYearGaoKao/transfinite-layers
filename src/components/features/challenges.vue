@@ -49,10 +49,11 @@ onUnmounted(() => unregisterSubtabCycler('challenges'))
 /**当前子标签下的所有挑战 */
 const challengeList = computed(() => getChallenges(subtab.value))
 
-/**目标资源文字(如"层级1点数") */
+/**目标资源文字(如"层级1点数");目标层解析不出来(挑战未解锁)时返回空 */
 function goalTypeText(def: ChallengeDef): string {
   const type = def.goalType == 'energy' ? '能量' : '点数'
-  return getLayerName(challengeGoalLayer(def)) + type
+  const goal = challengeGoalLayer(def)
+  return goal ? getLayerName(goal) + type : ''
 }
 
 /**进度百分比(0~100,溢出或非法时取边界) */

@@ -1,20 +1,17 @@
 //进行重置
+//规则(详见 docs/面向开发者/层级系统.md):
+//- 重置的唯一入口是doReset;先算收益(含重置瞬间成就判定)再写状态
+//- 三类重置:晋升(forced=false,拿收益并重置自身进度)、强制级联(forced=true,无收益不动自身)、重开本轮(清零本层)
+//- 删层范围与解锁新层级由logic/layerStructure负责
 import Decimal from 'break_eternity.js'
-import { initializeDimensions, initializeLayer, type LayerId } from '@/data/types'
-import {
-  getLayer,
-  getUnlockedNormalAchievementCount,
-  hasAchievement,
-  highestActiveLayer,
-  prevLayer,
-} from '@/access'
-import { getLayerIndex, getLayerOrder, isLayer0, nextLayer, shiftLayer } from '@/tools/ordinal'
+import { initializeDimensions, type LayerId } from '@/data/types'
+import { getLayer, getUnlockedNormalAchievementCount, hasAchievement } from '@/access'
+import { isLayer0, isTempLayer } from '@/tools/ordinal'
 import { canReset, resetGain } from '@/compute/prestige'
 import { hasUpgrade } from '@/compute/upgrades'
 import { hasInfinityUpgrade } from '@/compute/infinity'
-import { player } from '@/data/player'
-import { temp } from '@/app/temp'
 import { checkResetAchievements } from './achievements'
+import { unlockNextLayer, wipeLayerScope } from './layerStructure'
 
 /**重置选项 */
 interface ResetOptions {
@@ -93,37 +90,15 @@ export function doReset(
       L.resetCount = L.resetCount.add(1)
       L.bestPoints = L.bestPoints.max(gain)
     }
-    //重置前面的层级
-    const prev = prevLayer(layer)
+    //重置下层:先删除开区间(prevLayer(layer), layer)内的层级,再清空并级联重置下层目标
+    //(0阶层级的下层就是相邻槽位,区间为空,等价于"只清空不删层")
+    const prev = wipeLayerScope(layer)
     resetData(prev, {
       keepUpgrades: !forceClearUpgrades && hasUpgrade(layer, 8),
     })
     doReset(prev, true, false, forceClearUpgrades)
-    //如果是临时层级，则添加一个新层级
-    if (layer.indexOf(-1) >= 0) {
-      const n = getLayerOrder(layer)
-      const posh = highestActiveLayer(layer, n)
-      const highestLevel = getLayer(posh)?.level || new Decimal(0)
-      const idx = getLayerIndex(posh, n)
-      let realPos: LayerId
-      if (idx < player.base - 1) {
-        //直接将新层级加在原层级后面
-        realPos = nextLayer(posh)
-        player.layers[realPos.toString()] = L || null
-      } else {
-        //后面的层级向前平移
-        for (let i = Math.floor(player.base / 2); i < player.base - 1; i++) {
-          const pos1 = shiftLayer(layer, n, i).toString()
-          const pos2 = shiftLayer(layer, n, i + 1).toString()
-          player.layers[pos1] = getLayer(pos2) || null
-        }
-        player.layers[posh.toString()] = L || null
-        realPos = posh.slice()
-      }
-      temp.tempLayers[layer.toString()] = initializeLayer(highestLevel.add(1))
-      //临时层级转变为普通层级后,跳转到转变后的层级,方便玩家在新层级购买等操作
-      player.layerSubtab = realPos
-    }
+    //临时层:转为真实层级(解锁下一个层级),视角由layerStructure切到新层级
+    if (isTempLayer(layer)) unlockNextLayer(layer)
   }
 }
 
@@ -133,7 +108,7 @@ export function doReset(
  * 临时层(含-1)禁止调用:在临时层重置会无条件解锁新层级
  */
 export function resetRunWithoutGain(pos: LayerId) {
-  if (pos.includes(-1)) return
+  if (isTempLayer(pos)) return
   const L = getLayer(pos)
   if (!L || !L.active) return
   resetData(pos, { keepUpgrades: true })
