@@ -325,20 +325,35 @@ function autoBuyUpgrades(pos: LayerId, cfg: AutoBuyConfig) {
     remaining = remaining.sub(cost)
   }
 }
+/**
+ * 自动重置(含自动无限重置)的条件判定:把配置里的时间/点数/倍率条件按combine合并
+ * @param cfg 自动重置配置
+ * @param values gain为本次重置收益,resource为当前资源量,elapsed为"时间"条件的计时
+ * 说明:elapsed缺省时不参与判定(与层级自动重置一致,取不到下层计时就只看收益条件)
+ * @returns 是否满足触发条件(未启用任何条件时恒为false)
+ */
+export function autoResetConditionsMet(
+  cfg: AutoResetConfig,
+  values: { gain: Decimal; resource: Decimal; elapsed?: Decimal },
+): boolean {
+  const conditions: boolean[] = []
+  if (cfg.useTime && values.elapsed) conditions.push(values.elapsed.gte(cfg.time))
+  if (cfg.usePoint) conditions.push(values.gain.gte(cfg.point))
+  if (cfg.useMult) conditions.push(values.gain.gte(values.resource.mul(cfg.mult).max(1)))
+  if (conditions.length == 0) return false
+  return cfg.combine == 'all' ? conditions.every((c) => c) : conditions.some((c) => c)
+}
+
 /**自动重置 */
 function autoReset(pos: LayerId, cfg: AutoResetConfig) {
   const L = getLayer(pos)
   if (!L) return
-  const gain = resetGain(pos)
-  const conditions: boolean[] = []
   //重置该层会清空下层(prevLayer)，因此时间条件以prevLayer的重置计时为准
-  if (cfg.useTime) {
-    const prevL = getLayer(prevLayer(pos))
-    if (prevL) conditions.push(prevL.resetTime.gte(cfg.time))
-  }
-  if (cfg.usePoint) conditions.push(gain.gte(cfg.point))
-  if (cfg.useMult) conditions.push(gain.gte(L.points.mul(cfg.mult).max(1)))
-  if (conditions.length == 0) return
-  const ok = cfg.combine == 'all' ? conditions.every((c) => c) : conditions.some((c) => c)
-  if (ok && canReset(pos)) doReset(pos)
+  const prevL = getLayer(prevLayer(pos))
+  const met = autoResetConditionsMet(cfg, {
+    gain: resetGain(pos),
+    resource: L.points,
+    elapsed: prevL?.resetTime,
+  })
+  if (met && canReset(pos)) doReset(pos)
 }

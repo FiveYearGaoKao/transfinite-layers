@@ -1,6 +1,12 @@
 import Decimal from 'break_eternity.js'
 import { reactive } from 'vue'
-import { initializeLayer, type LayerList, type LayerAutomation } from './types'
+import {
+  defaultAutoReset,
+  initializeLayer,
+  type LayerList,
+  type LayerAutomation,
+  type AutoResetConfig,
+} from './types'
 import { gameVersion, INITIAL_BASE, DEFAULT_BOOST_SPEED } from './constants'
 import type { QuizQuestion } from '@/tools/quiz'
 
@@ -16,6 +22,9 @@ export type mainTabs =
   | 'singularity'
   | 'tree'
   | 'ordinal'
+
+/**无限页的子标签 */
+export type InfinitySubtab = 'upgrades' | 'milestones'
 
 export interface Player {
   version: string
@@ -75,6 +84,12 @@ export interface Player {
   infinityBestResetTime: Decimal
   /**总无限点数(累计获得,永不清除) */
   totalInfinityPoints: Decimal
+  /**历史最佳"无限点数/秒"(单次无限重置收益÷本次无限时长,供无限里程碑im100使用) */
+  infinityBestRate: Decimal
+  /**自动无限重置配置(结构同层级的自动重置;无限里程碑im10解锁) */
+  infinityAuto: AutoResetConfig
+  /**无限页当前子标签(无限升级/无限里程碑) */
+  infinityTab: InfinitySubtab
   /**挑战页当前子标签 */
   challengeTab: string
   /**签到数据:lastDay为最后签到日期(YYYY-MM-DD),streak为连续签到天数,highStreak为随机奖励>90的连续天数 */
@@ -132,6 +147,9 @@ export function initializeSave(): Player {
     infinityRunTime: new Decimal(0),
     infinityBestResetTime: Decimal.dInf,
     totalInfinityPoints: new Decimal(0),
+    infinityBestRate: new Decimal(0),
+    infinityAuto: defaultAutoReset(),
+    infinityTab: 'upgrades',
     challengeTab: 'normal',
     checkin: { lastDay: '', streak: 0, highStreak: 0 },
     quizLastAt: 0,

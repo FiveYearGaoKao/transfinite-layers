@@ -20,6 +20,7 @@ import { unlockAllUi } from '@/logic/knowledge'
 import { gameVersion, gameName } from '@/data/constants'
 import { CHANGELOG } from '@/data/changelog'
 import { hasKnowledge } from '@/compute/knowledge'
+import { hasInfinityMilestone, infinityPassiveRate } from '@/compute/infinityMilestones'
 import { RESOURCE_ITEMS } from '@/app/resourceRegistry'
 
 type optionsTab = 'settings' | 'hotkeys' | 'about' | 'changelog' | 'statistics'
@@ -459,6 +460,10 @@ const activeLayers = computed(() =>
           <span class="text">本次无限经历时间: {{ formatTime(player.infinityRunTime) }}</span>
           <span class="text">无限重置最短时间: {{ formatTime(player.infinityBestResetTime) }}</span>
           <span class="text">总无限点数: {{ format(player.totalInfinityPoints) }}</span>
+          <span class="text">最佳无限点数/秒: {{ format(player.infinityBestRate) }}</span>
+          <span v-if="hasInfinityMilestone('im100')" class="text">
+            被动无限点数/秒: {{ format(infinityPassiveRate()) }}
+          </span>
         </div>
         <div class="section box left">
           <span class="text bold">层级资源</span>

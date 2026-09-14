@@ -2,6 +2,7 @@
 //指令均为ascii字符,不能使用中文
 import { player } from '@/data/player'
 import { addLog } from '@/data/log'
+import { temp } from '@/data/temp'
 import { hasKnowledge } from '@/compute/knowledge'
 import { openQuiz } from '@/app/dialog'
 import {
@@ -11,8 +12,14 @@ import {
   quizCooldownLeft,
   submitQuizAnswer,
 } from '@/logic/commands'
+import { getPlayerValue, setPlayerValue } from '@/logic/debug'
 import { settings, saveSettings, applyTheme } from '@/app/settings'
 import { formatTime } from '@/tools/format'
+
+/**调试指令是否可用:仅开发构建(非发布版)且在调试模式下 */
+function debugCommandsAvailable(): boolean {
+  return !import.meta.env.PROD && temp.debugMode
+}
 
 /**指令定义 */
 interface CommandInfo {
@@ -21,6 +28,8 @@ interface CommandInfo {
   description: string
   /**是否已解锁(缺省为已解锁指令系统) */
   unlocked(): boolean
+  /**是否为调试指令(不受"指令系统"知识升级限制,仅调试模式可用) */
+  debugOnly?: boolean
   run(args: string): void | Promise<void>
 }
 
@@ -145,6 +154,40 @@ const COMMANDS: CommandInfo[] = [
       addLog('info', line ?? EGG_LINES[0] ?? '彩蛋')
     },
   },
+  {
+    cmd: 'getvalue',
+    usage: '/getvalue <路径>',
+    description: '调试:读取存档字段(如 infinityResets、challenges.c1、layers.0.points)',
+    debugOnly: true,
+    unlocked: () => debugCommandsAvailable(),
+    run(args) {
+      const path = args.trim()
+      if (!path) {
+        addLog('warning', '用法:/getvalue <路径>')
+        return
+      }
+      const text = getPlayerValue(path)
+      if (text == undefined) addLog('warning', `读取失败:路径不存在或不可读(${path})`)
+      else addLog('info', `${path} = ${text}`)
+    },
+  },
+  {
+    cmd: 'setvalue',
+    usage: '/setvalue <路径> <值>',
+    description: '调试:写入存档字段(按字段原类型转换;顶层字段必须已存在)',
+    debugOnly: true,
+    unlocked: () => debugCommandsAvailable(),
+    run(args) {
+      const [path, ...rest] = args.trim().split(/\s+/)
+      const value = rest.join(' ')
+      if (!path || !value) {
+        addLog('warning', '用法:/setvalue <路径> <值>')
+        return
+      }
+      const res = setPlayerValue(path, value)
+      addLog(res.ok ? 'info' : 'warning', res.ok ? `已设置:${res.text}` : `设置失败:${res.text}`)
+    },
+  },
 ]
 
 /**
@@ -166,12 +209,12 @@ export function executeCommand(input: string): boolean {
   }
   const [raw, ...rest] = trimmed.slice(1).split(/\s+/)
   const cmd = (raw ?? '').toLowerCase()
-  //指令系统整体由知识升级"指令系统"解锁
-  if (!hasKnowledge('command-checkin')) {
+  const info = COMMANDS.find((c) => c.cmd == cmd)
+  //指令系统整体由知识升级"指令系统"解锁;调试指令不受此限制(仅开发构建+调试模式可用)
+  if (!hasKnowledge('command-checkin') && info?.debugOnly !== true) {
     addLog('warning', '未解锁指令系统(需购买知识升级:指令系统)')
     return true
   }
-  const info = COMMANDS.find((c) => c.cmd == cmd)
   if (!info) {
     addLog('warning', `未知指令:/${cmd}(输入/help查看可用指令)`)
     return true

@@ -149,9 +149,13 @@ body {
   margin-top: 8px;
 }
 .section.box {
+  margin-top: 0px;
+}
+/*边框/内边距用零特异性选择器(:where)声明:否则 0,2,0 的特异性会压过状态类(selected/affordable/bought/toggle-on),
+  使卡片加上 .bought 后边框仍是这里的 var(--dim);用:where后状态类(0,1,0)可正常覆盖,不必再重写一遍颜色值*/
+:where(.section.box) {
   border: 2px solid var(--dim);
   padding: 6px;
-  margin-top: 0px;
 }
 .subtabRow {
   display: flex;

@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import Decimal from 'break_eternity.js'
 import { getLayer } from '@/access'
 import { getLayerOrder, isLayer0 } from '@/tools/ordinal'
 import { getBuyables } from '@/compute/buyables'
 import { getUpgrades } from '@/compute/upgrades'
+import { renderLayerPlaceholders } from '@/compute/effects'
 import { hasKnowledge } from '@/compute/knowledge'
+import { hasInfinityMilestone } from '@/compute/infinityMilestones'
 import { DIMENSION_COUNT } from '@/data/constants'
 import type {
   AutoBuyConfig,
@@ -15,6 +16,7 @@ import type {
   LayerId,
 } from '@/data/types'
 import { registerSubtabCycler, unregisterSubtabCycler } from '@/app/navigation'
+import { getInfinityAuto, toggleAutoInfinity } from '@/logic/infinity'
 import {
   AUTOMATIONS,
   applyAllGlobalAuto,
@@ -28,12 +30,24 @@ import {
   toggleLayerAuto,
 } from '@/logic/automations'
 import LayerSelect from './layerSelect.vue'
+import ResetAutoConfig from './resetAutoConfig.vue'
 
-/**自动化页视图:内部自动化/全局配置 */
-type AutoView = 'internal' | 'global'
+/**自动化页视图:内部自动化/全局配置/无限(元层自动化) */
+type AutoView = 'internal' | 'global' | 'infinity'
 const view = ref<AutoView>('internal')
 /**全局配置是否解锁(知识升级auto-global-config) */
 const globalUnlocked = computed(() => hasKnowledge('auto-global-config'))
+/**自动无限重置是否解锁(无限里程碑im10) */
+const infinityUnlocked = computed(() => hasInfinityMilestone('im10'))
+/**当前可见的视图列表(左右键循环与子标签行共用) */
+const views = computed<{ id: AutoView; name: string }[]>(() => {
+  const list: { id: AutoView; name: string }[] = [{ id: 'internal', name: '内部自动化' }]
+  if (globalUnlocked.value) list.push({ id: 'global', name: '全局配置' })
+  if (infinityUnlocked.value) list.push({ id: 'infinity', name: '无限' })
+  return list
+})
+/**自动无限重置配置(player.infinityAuto) */
+const infinityCfg = computed<AutoResetConfig>(() => getInfinityAuto())
 /**当前选择的层级(内部自动化用) */
 const selectedPos = ref<LayerId>([0])
 /**当前层级(或全局模板)的自动化配置 */
@@ -72,31 +86,42 @@ watch(view, (v) => {
 /**自动化页子标签的循环切换(快捷键左右键用) */
 onMounted(() =>
   registerSubtabCycler('automation', (dir) => {
-    const list: AutoView[] = globalUnlocked.value ? ['internal', 'global'] : ['internal']
+    const list = views.value.map((v) => v.id)
+    if (list.length == 0) return
     const idx = list.indexOf(view.value)
     view.value = list[(idx + dir + list.length) % list.length] ?? 'internal'
   }),
 )
 onUnmounted(() => unregisterSubtabCycler('automation'))
 
-/**当前视图显示的自动化卡片(内部:层级0不显示自动重置;全局:全部类型) */
+/**当前视图显示的自动化卡片(内部:层级0不显示自动重置;全局:全部类型;无限:不显示层级卡片) */
 const visibleDefs = computed(() => {
+  if (view.value == 'infinity') return []
   if (view.value == 'global') return AUTOMATIONS
   return AUTOMATIONS.filter((def) => !(def.id == 'reset' && isLayer0(selectedPos.value)))
 })
-/**某类型卡片的逐项列表(维度/可购买/升级;全局模式以order 0为准) */
-function cardItems(def: AutomationDef): { id: number; name: string }[] {
+/**某类型卡片的逐项列表(维度/可购买/升级;全局模式以order 0为准;name为按钮文字,title为悬浮说明) */
+function cardItems(def: AutomationDef): { id: number; name: string; title?: string }[] {
   if (def.id == 'dims') {
     const n = view.value == 'global' ? DIMENSION_COUNT : dimCount.value
     return Array.from({ length: n }, (_, i) => ({ id: i, name: `维度${i + 1}` }))
   }
   if (def.id == 'buyables') {
     const list = view.value == 'global' ? getBuyables(0) : buyableList.value
-    return list.map((b) => ({ id: b.id, name: b.name }))
+    return list.map((b) => ({
+      id: b.id,
+      name: b.name,
+      title: renderLayerPlaceholders(b.description, selectedPos.value),
+    }))
   }
   if (def.id == 'upgrades') {
     const list = view.value == 'global' ? getUpgrades(0) : upgradeList.value
-    return list.map((u) => ({ id: u.id, name: u.name }))
+    //升级数量多,按钮只显示编号u1~u9,全名与说明放tooltip,避免卡片被撑宽
+    return list.map((u) => ({
+      id: u.id,
+      name: `${u.name}`,
+      title: `${renderLayerPlaceholders(u.description, selectedPos.value)}`,
+    }))
   }
   return []
 }
@@ -127,24 +152,25 @@ function itemOn(cfg: AutoBuyConfig, id: number): boolean {
 function toggleItem(cfg: AutoBuyConfig, id: number) {
   cfg.perItem[id] = !(cfg.perItem[id] === true)
 }
-/**解析大数字输入，非法时保持原值 */
-function parseDecimal(v: string): Decimal {
-  const d = new Decimal(v)
-  return Decimal.isNaN(d) ? new Decimal(0) : d
+/**把自动重置条件控件的改动写回所选层级/全局模板的配置(子组件只读props,改动经事件上抛) */
+function applyResetPatch(patch: Partial<AutoResetConfig>) {
+  Object.assign(resetCfg(), patch)
+}
+/**把自动无限重置条件控件的改动写回player.infinityAuto */
+function applyInfinityPatch(patch: Partial<AutoResetConfig>) {
+  Object.assign(infinityCfg.value, patch)
 }
 </script>
 <template>
   <div id="automation">
     <div class="subtabRow">
-      <button :class="['subTab', { selected: view == 'internal' }]" @click="switchView('internal')">
-        内部自动化
-      </button>
       <button
-        v-if="globalUnlocked"
-        :class="['subTab', { selected: view == 'global' }]"
-        @click="switchView('global')"
+        v-for="t in views"
+        :key="t.id"
+        :class="['subTab', { selected: view == t.id }]"
+        @click="switchView(t.id)"
       >
-        全局配置
+        {{ t.name }}
       </button>
     </div>
 
@@ -159,7 +185,7 @@ function parseDecimal(v: string): Decimal {
         本层:{{ layerAutoOn ? '开' : '关' }}
       </button>
     </div>
-    <div v-else-if="globalUnlocked" id="autoMasterRow">
+    <div v-else-if="view == 'global'" id="autoMasterRow">
       <button :class="['toggle', allAutoOn ? 'toggle-on' : 'toggle-off']" @click="toggleAllAuto()">
         全部自动化:{{ allAutoOn ? '开' : '关' }}
       </button>
@@ -172,101 +198,82 @@ function parseDecimal(v: string): Decimal {
       全局配置是自动化配置的模板:新解锁层级的自动化将自动套用此配置;修改后点各卡片"应用该配置"可覆盖所有已有层级
     </span>
 
-    <template v-for="def in visibleDefs" :key="def.id">
-      <div class="card section box">
+    <div id="autoCards">
+      <div v-if="view == 'infinity'" class="card section box">
         <div class="row">
-          <span class="text bold">{{ def.name }}</span>
-          <span v-if="view == 'internal' && !defUnlocked(def)" class="text badge">未解锁</span>
+          <span class="text bold" title="此项不受'全部自动化'开关控制">自动无限重置</span>
         </div>
         <div class="row">
           <button
-            :class="['toggle', isCardOn(def) ? 'toggle-on' : 'toggle-off']"
-            @click="toggleCard(def)"
+            :class="['toggle', infinityCfg.enabled ? 'toggle-on' : 'toggle-off']"
+            @click="toggleAutoInfinity()"
           >
-            开关:{{ isCardOn(def) ? '开' : '关' }}
+            开关:{{ infinityCfg.enabled ? '开' : '关' }}
           </button>
-          <span class="text">优先级</span>
-          <input type="number" v-model.number="cfgOf(def.id).priority" />
         </div>
-
-        <template v-if="def.id == 'dims' || def.id == 'buyables' || def.id == 'upgrades'">
-          <div class="row">
-            <button @click="buyCfg(def.id).order = buyCfg(def.id).order == 'asc' ? 'desc' : 'asc'">
-              {{ buyCfg(def.id).order == 'asc' ? '从低到高' : '从高到低' }}
-            </button>
-            <span class="text">消耗%</span>
-            <input type="number" v-model.number="buyCfg(def.id).percent" />
-            <button
-              v-if="def.id != 'upgrades' && hasKnowledge('auto-batch')"
-              title="需知识升级:自动批量"
-              @click="buyCfg(def.id).buyAmount = buyCfg(def.id).buyAmount == 'one' ? 'max' : 'one'"
-            >
-              {{ buyCfg(def.id).buyAmount == 'one' ? '买1个' : '买最大' }}
-            </button>
-          </div>
-          <div class="row" :class="def.id == 'upgrades' ? 'autoToggles' : ''">
-            <button
-              v-for="it in cardItems(def)"
-              :key="it.id"
-              :class="['toggle', itemOn(buyCfg(def.id), it.id) ? 'toggle-on' : 'toggle-off']"
-              @click="toggleItem(buyCfg(def.id), it.id)"
-            >
-              {{ it.name }}:{{ itemOn(buyCfg(def.id), it.id) ? '开' : '关' }}
-            </button>
-          </div>
-        </template>
-
-        <template v-else>
-          <div class="row">
-            <button @click="resetCfg().combine = resetCfg().combine == 'any' ? 'all' : 'any'">
-              {{ resetCfg().combine == 'any' ? '任一满足' : '全部满足' }}
-            </button>
-          </div>
-          <div class="row">
-            <button
-              :class="['toggle', resetCfg().useTime ? 'toggle-on' : 'toggle-off']"
-              @click="resetCfg().useTime = !resetCfg().useTime"
-            >
-              时间:{{ resetCfg().useTime ? '开' : '关' }}
-            </button>
-            <input v-if="resetCfg().useTime" type="number" v-model.number="resetCfg().time" />
-            <span class="text">秒</span>
-          </div>
-          <div class="row">
-            <button
-              :class="['toggle', resetCfg().usePoint ? 'toggle-on' : 'toggle-off']"
-              @click="resetCfg().usePoint = !resetCfg().usePoint"
-            >
-              点数:{{ resetCfg().usePoint ? '开' : '关' }}
-            </button>
-            <input
-              v-if="resetCfg().usePoint"
-              :value="resetCfg().point.toString()"
-              @change="resetCfg().point = parseDecimal(($event.target as HTMLInputElement).value)"
-            />
-          </div>
-          <div class="row">
-            <button
-              :class="['toggle', resetCfg().useMult ? 'toggle-on' : 'toggle-off']"
-              @click="resetCfg().useMult = !resetCfg().useMult"
-            >
-              倍率:{{ resetCfg().useMult ? '开' : '关' }}
-            </button>
-            <input
-              v-if="resetCfg().useMult"
-              :value="resetCfg().mult.toString()"
-              @change="resetCfg().mult = parseDecimal(($event.target as HTMLInputElement).value)"
-            />
-            <span class="text">倍</span>
-          </div>
-        </template>
-
-        <div v-if="view == 'global'" class="row">
-          <button class="toggle selected" @click="applyGlobalAuto(def.id)">应用该配置</button>
-          <span class="text">将所有层级的{{ def.name }}替换为上方模板</span>
-        </div>
+        <ResetAutoConfig :cfg="infinityCfg" @change="applyInfinityPatch" />
       </div>
-    </template>
+
+      <template v-for="def in visibleDefs" :key="def.id">
+        <div class="card section box">
+          <div class="row">
+            <span class="text bold">{{ def.name }}</span>
+            <span v-if="view == 'internal' && !defUnlocked(def)" class="text badge">未解锁</span>
+          </div>
+          <div class="row">
+            <button
+              :class="['toggle', isCardOn(def) ? 'toggle-on' : 'toggle-off']"
+              @click="toggleCard(def)"
+            >
+              开关:{{ isCardOn(def) ? '开' : '关' }}
+            </button>
+            <span class="text">优先级</span>
+            <input type="number" v-model.number="cfgOf(def.id).priority" />
+          </div>
+
+          <template v-if="def.id == 'dims' || def.id == 'buyables' || def.id == 'upgrades'">
+            <div class="row">
+              <button
+                @click="buyCfg(def.id).order = buyCfg(def.id).order == 'asc' ? 'desc' : 'asc'"
+              >
+                {{ buyCfg(def.id).order == 'asc' ? '从低到高' : '从高到低' }}
+              </button>
+              <span class="text">消耗%</span>
+              <input type="number" v-model.number="buyCfg(def.id).percent" />
+              <button
+                v-if="def.id != 'upgrades' && hasKnowledge('auto-batch')"
+                title="需知识升级:自动批量"
+                @click="
+                  buyCfg(def.id).buyAmount = buyCfg(def.id).buyAmount == 'one' ? 'max' : 'one'
+                "
+              >
+                {{ buyCfg(def.id).buyAmount == 'one' ? '买1个' : '买最大' }}
+              </button>
+            </div>
+            <div class="row">
+              <button
+                v-for="it in cardItems(def)"
+                :key="it.id"
+                :class="['toggle', itemOn(buyCfg(def.id), it.id) ? 'toggle-on' : 'toggle-off']"
+                :title="it.title"
+                @click="toggleItem(buyCfg(def.id), it.id)"
+              >
+                {{ it.name }}:{{ itemOn(buyCfg(def.id), it.id) ? '开' : '关' }}
+              </button>
+            </div>
+          </template>
+
+          <template v-else>
+            <ResetAutoConfig :cfg="resetCfg()" @change="applyResetPatch" />
+          </template>
+
+          <div v-if="view == 'global'" class="row">
+            <button class="toggle selected" @click="applyGlobalAuto(def.id)">应用该配置</button>
+            <span class="text">将所有层级的{{ def.name }}替换为上方模板</span>
+          </div>
+        </div>
+      </template>
+    </div>
   </div>
 </template>
 <style scoped>
@@ -287,9 +294,14 @@ div#autoMasterRow {
 div.card {
   gap: 6px;
 }
-/*升级开关较多,限制宽度强制换行*/
-div.autoToggles {
-  max-width: 540px;
+/*卡片区:等宽卡片的自适应网格(窄屏1列、宽屏自动排2~4列),宽度上下限避免超宽屏被拉伸或窄屏溢出*/
+div#autoCards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 360px));
+  justify-content: center;
+  align-items: start;
+  gap: 8px;
+  width: 100%;
 }
 span.infoHint {
   max-width: 520px;

@@ -127,3 +127,25 @@ export function defaultAutoReset(): AutoResetConfig {
     mult: new Decimal(2),
   }
 }
+/**
+ * 补齐自动重置配置的缺失/非法字段(读档时用,兼容旧档与损坏档)
+ * @param cfg 原始配置(可能为undefined或结构不全)
+ */
+export function sanitizeAutoReset(cfg: unknown): AutoResetConfig {
+  const base = defaultAutoReset()
+  if (cfg == null || typeof cfg != 'object') return base
+  const c = cfg as Partial<AutoResetConfig>
+  const num = (v: unknown, d: number): number => (typeof v == 'number' && isFinite(v) ? v : d)
+  const dec = (v: unknown, d: Decimal): Decimal => (v instanceof Decimal && !v.isNan() ? v : d)
+  return {
+    enabled: typeof c.enabled == 'boolean' ? c.enabled : base.enabled,
+    priority: num(c.priority, base.priority),
+    combine: c.combine == 'all' ? 'all' : base.combine,
+    useTime: typeof c.useTime == 'boolean' ? c.useTime : base.useTime,
+    time: num(c.time, base.time),
+    usePoint: typeof c.usePoint == 'boolean' ? c.usePoint : base.usePoint,
+    point: dec(c.point, base.point),
+    useMult: typeof c.useMult == 'boolean' ? c.useMult : base.useMult,
+    mult: dec(c.mult, base.mult),
+  }
+}

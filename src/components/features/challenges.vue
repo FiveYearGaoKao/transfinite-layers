@@ -1,23 +1,26 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import Decimal from 'break_eternity.js'
 import { player } from '@/data/player'
 import { getLayerName } from '@/access'
 import { format, formatWhole } from '@/tools/format'
 import { registerSubtabCycler, unregisterSubtabCycler } from '@/app/navigation'
+import { hasInfinityMilestone } from '@/compute/infinityMilestones'
 import {
+  batchCompleteChallenge,
   challengeDone,
   challengeGoal,
   challengeGoalLayer,
   challengeResource,
   challengeRewardValue,
   completions,
-  completeChallenge,
   enterChallenge,
   exitChallenge,
   getAllChallenges,
   getChallenges,
   isActive,
   isUnlocked,
+  maxBatchCompletions,
   type ChallengeDef,
 } from '@/logic/challenges'
 
@@ -61,6 +64,16 @@ function progressPercent(def: ChallengeDef): number {
   const ratio = challengeResource(def).div(challengeGoal(def))
   if (!ratio.isFinite()) return 100
   return Math.max(0, Math.min(100, ratio.mul(100).toNumber()))
+}
+
+/**本次点击完成按钮预计完成的次数(至少1;解锁无限里程碑im2后可一次完成多次) */
+function batchCount(def: ChallengeDef): Decimal {
+  return maxBatchCompletions(def).sub(completions(def)).max(1)
+}
+/**完成按钮文字:未解锁无限里程碑im2时为逐次完成 */
+function completeButtonText(def: ChallengeDef): string {
+  if (!hasInfinityMilestone('im2')) return '完成并退出'
+  return `完成 ${formatWhole(batchCount(def))} 次`
 }
 </script>
 <template>
@@ -122,9 +135,9 @@ function progressPercent(def: ChallengeDef): number {
         <button
           v-else-if="isActive(def) && challengeDone(def)"
           class="toggle toggle-on"
-          @click="completeChallenge(def)"
+          @click="batchCompleteChallenge(def)"
         >
-          完成并退出
+          {{ completeButtonText(def) }}
         </button>
         <button v-else class="toggle" disabled>未解锁</button>
       </div>

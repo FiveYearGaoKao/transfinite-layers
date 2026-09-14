@@ -23,6 +23,7 @@ import { maxSatisfying } from '@/tools/bisect'
 import { getLayerOrder } from '@/tools/ordinal'
 import { softCapValue } from '@/tools/softCap'
 import { format } from '@/tools/format'
+import { hasInfinityMilestone } from '@/compute/infinityMilestones'
 import { doReset } from './reset'
 import { addLog } from '@/data/log'
 
@@ -166,11 +167,11 @@ export function challengeRewardValue(def: ChallengeDef): string {
 }
 
 //------操作------
-/**进入/退出挑战时强制重置目标层(无视升级u7/u8);目标层已不存在时不做重置 */
+/**进入/退出挑战时强制重置目标层(无视升级u7/u8;无限里程碑im3解锁后不再强制清空下层升级);目标层已不存在时不做重置 */
 function challengeReset(def: ChallengeDef) {
   const target = challengeResetTarget(def)
   if (!target) return
-  doReset(target, true, false, true)
+  doReset(target, true, false, !hasInfinityMilestone('im3'))
 }
 
 /**
@@ -216,11 +217,37 @@ export function completeChallenge(def: ChallengeDef) {
 }
 
 /**
- * 批量完成辅助:给定目标资源量,求最多可完成的次数
+ * 批量完成辅助:给定目标资源量,求最大的 j 使 goal(j) <= resource
+ * 注意:goal(j)是"第j+1次完成"所需的资源量,故可完成到 j+1 次(见 maxBatchCompletions)
  * 目标公式 goal(k) 单调递增,由 maxSatisfying 在高度域二分求解(至多约129次目标求值)
  */
 export function maxCompletions(def: ChallengeDef, resource: Decimal): Decimal {
   return maxSatisfying((k) => def.goal(k), resource, completions(def))
+}
+
+/**当前资源下最多能完成到的完成次数(含本次;未达成当前目标时等于当前次数) */
+export function maxBatchCompletions(def: ChallengeDef): Decimal {
+  const now = completions(def)
+  if (!challengeDone(def)) return now
+  //goal(j) <= resource 说明"第j+1次"也已完成,故可完成到 j+1 次
+  return maxCompletions(def, challengeResource(def)).add(1)
+}
+
+/**
+ * 完成挑战(挑战卡完成按钮的统一入口)
+ * 未解锁无限里程碑im2时退化为逐次完成(+1);解锁后一次结算到当前资源允许的最大完成次数,再退出挑战
+ */
+export function batchCompleteChallenge(def: ChallengeDef) {
+  if (!hasInfinityMilestone('im2')) {
+    completeChallenge(def)
+    return
+  }
+  if (!isActive(def) || !challengeDone(def)) return
+  const now = completions(def)
+  const target = maxBatchCompletions(def)
+  if (target.lte(now)) return
+  player.challenges[def.id] = target
+  exitChallenge(def, true)
 }
 
 //------效果注册------

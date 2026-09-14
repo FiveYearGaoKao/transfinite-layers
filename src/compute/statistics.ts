@@ -209,6 +209,7 @@ export function buildGlobalNodes(): StatNode[] {
       label: () => '答题冷却(秒)',
     },
     { target: 'knowledgeGain', sign: 'x', label: () => '知识获取' },
+    { target: 'infinityGain', sign: 'x', label: () => '无限点数获取' },
   ]
   return defs.map((sd) => statRoot(sd, 0, [0]))
 }
