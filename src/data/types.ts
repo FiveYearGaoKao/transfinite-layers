@@ -93,11 +93,17 @@ export interface LayerAutomation {
   /**各自动化类型的配置 */
   cfgs: Record<string, AutoConfig>
 }
+/**自动化配置的形状:决定用哪个配置UI组件与哪套读档兜底 */
+export type AutoConfigKind = 'buy' | 'reset'
 /**自动化类型定义 */
 export interface AutomationDef<T extends AutoConfig = AutoConfig> {
   id: string
   /**显示名称 */
   name?: string
+  /**配置形状(自动购买类/自动重置类) */
+  configKind: AutoConfigKind
+  /**是否支持"买最大"(升级自动化逐项购买,不支持批量) */
+  supportsBatch?: boolean
   /**创建默认配置 */
   defaultCfg(): T
   /**该层是否解锁此自动化 */
@@ -108,6 +114,29 @@ export interface AutomationDef<T extends AutoConfig = AutoConfig> {
   setAll(pos: LayerId, cfg: T, on: boolean): void
   /**每帧更新 */
   onTick(pos: LayerId, cfg: T): void
+}
+/**
+ * 元层自动化类型定义(全局唯一实例:配置不按层级存放,每个id一份)
+ * 与层级自动化(AutomationDef)的差别:解锁由机制自己判定(成就/知识/里程碑等),每帧各跑一次而非每层一次
+ */
+export interface MetaAutomationDef<T extends AutoConfig = AutoConfig> {
+  id: string
+  /**显示名称 */
+  name: string
+  /**配置形状(决定用哪个配置UI组件) */
+  configKind: AutoConfigKind
+  /**是否已解锁 */
+  isUnlocked(): boolean
+  /**创建默认配置 */
+  defaultCfg(): T
+  /**读档兜底:补齐配置的缺失/非法字段 */
+  sanitizeCfg(cfg: unknown): T
+  /**配置是否激活(总开关) */
+  isActive(cfg: T): boolean
+  /**把总开关设为on/off */
+  setAll(cfg: T, on: boolean): void
+  /**每帧更新 */
+  onTick(cfg: T, dt: Decimal): void
 }
 /**创建默认的自动购买配置 */
 export function defaultAutoBuy(priority: number = 1): AutoBuyConfig {

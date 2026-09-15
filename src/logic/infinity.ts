@@ -3,7 +3,6 @@
 //import '@/compute/infinityMilestones'的效果注册随下方具名导入一并执行
 import Decimal from 'break_eternity.js'
 import { player } from '@/data/player'
-import { defaultAutoReset, type AutoResetConfig } from '@/data/types'
 import { clearTempLayers } from '@/data/temp'
 import { getLayerOrder, isLayer0 } from '@/tools/ordinal'
 import { addLog } from '@/data/log'
@@ -15,7 +14,6 @@ import {
   infinityUpgradeCost,
 } from '@/compute/infinity'
 import { hasInfinityMilestone, infinityPassiveRate } from '@/compute/infinityMilestones'
-import { autoResetConditionsMet } from './automations'
 import { getChallenge } from './challenges'
 import { recreateLayer0, wipeLayersWhere } from './layerStructure'
 
@@ -68,37 +66,14 @@ export function buyInfinityUpgrade(id: string) {
 }
 
 //------无限里程碑相关操作------
-/**获取自动无限重置配置(结构缺失时按默认值补齐;字段级校验在读档时完成) */
-export function getInfinityAuto(): AutoResetConfig {
-  if (!player.infinityAuto) player.infinityAuto = defaultAutoReset()
-  return player.infinityAuto
-}
-
-/**切换自动无限重置开关(无限里程碑im10解锁) */
-export function toggleAutoInfinity() {
-  if (!hasInfinityMilestone('im10')) return
-  const cfg = getInfinityAuto()
-  cfg.enabled = !cfg.enabled
-}
-
 /**
  * 无限里程碑的每帧维护
  * im100:按"最佳无限点数/秒×INFINITY_PASSIVE_RATE"每秒被动获得无限点数(不经infinityGain管道)
- * im10:自动无限重置,条件判定与层级自动重置同义(时间=本次无限经历秒数,点数=本次可获得IP,倍率=收益≥当前IP×倍率)
+ * 注:im10的自动无限重置是元层自动化,注册在logic/metaAutomations.ts,不在这里处理
  */
 export function updateInfinityMilestones(dt: Decimal) {
-  if (hasInfinityMilestone('im100')) {
-    const gain = infinityPassiveRate().mul(dt)
-    player.infinityPoints = player.infinityPoints.add(gain)
-    player.totalInfinityPoints = player.totalInfinityPoints.add(gain)
-  }
-  if (!hasInfinityMilestone('im10')) return
-  const cfg = getInfinityAuto()
-  if (!cfg.enabled || !canInfinityReset()) return
-  const met = autoResetConditionsMet(cfg, {
-    gain: infinityGain(),
-    resource: player.infinityPoints,
-    elapsed: player.infinityRunTime,
-  })
-  if (met) doInfinityReset()
+  if (!hasInfinityMilestone('im100')) return
+  const gain = infinityPassiveRate().mul(dt)
+  player.infinityPoints = player.infinityPoints.add(gain)
+  player.totalInfinityPoints = player.totalInfinityPoints.add(gain)
 }

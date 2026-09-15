@@ -28,6 +28,7 @@ export const AUTOMATIONS: AutomationDef[] = [
   {
     id: 'dims',
     name: '维度自动化',
+    configKind: 'buy',
     defaultCfg: () => defaultAutoBuy(),
     isUnlocked: (pos) => dimsAutoUnlocked(pos),
     isActive: (cfg) => Object.values((cfg as AutoBuyConfig).perItem).some((v) => v),
@@ -40,6 +41,7 @@ export const AUTOMATIONS: AutomationDef[] = [
   {
     id: 'buyables',
     name: '可购买自动化',
+    configKind: 'buy',
     defaultCfg: () => defaultAutoBuy(2),
     isUnlocked: (pos) => buyablesAutoUnlocked(pos),
     isActive: (cfg) => Object.values((cfg as AutoBuyConfig).perItem).some((v) => v),
@@ -53,6 +55,7 @@ export const AUTOMATIONS: AutomationDef[] = [
   {
     id: 'reset',
     name: '自动重置',
+    configKind: 'reset',
     defaultCfg: () => defaultAutoReset(),
     isUnlocked: (pos) => resetAutoUnlocked(pos),
     isActive: (cfg) => (cfg as AutoResetConfig).enabled,
@@ -64,6 +67,9 @@ export const AUTOMATIONS: AutomationDef[] = [
   {
     id: 'upgrades',
     name: '升级自动化',
+    configKind: 'buy',
+    //升级为一次性购买,不支持"买最大"
+    supportsBatch: false,
     defaultCfg: () => defaultAutoBuy(4),
     isUnlocked: (pos) => autoUpgradeUnlocked(pos),
     isActive: (cfg) => Object.values((cfg as AutoBuyConfig).perItem).some((v) => v),

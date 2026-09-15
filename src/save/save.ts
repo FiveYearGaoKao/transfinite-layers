@@ -3,7 +3,7 @@ import Decimal from 'break_eternity.js'
 import { ref } from 'vue'
 import { compressToBase64, decompressFromBase64 } from 'lz-string'
 import { player, type Player, initializeSave } from '@/data/player'
-import { sanitizeAutoReset } from '@/data/types'
+import { sanitizeMetaAutomations } from '@/logic/metaAutomations'
 import { gameName, gameVersion, EARLIEST_SAVE_TIME, SAVE_SLOT_COUNT } from '@/data/constants'
 import { getLayer, invalidateLayerOrder } from '@/access'
 import { clearTempLayers } from '@/data/temp'
@@ -223,7 +223,7 @@ function load(s: string): number {
     if (!(player.infinityBestRate?.gte(0) && player.infinityBestRate.isFinite())) {
       player.infinityBestRate = new Decimal(0)
     }
-    player.infinityAuto = sanitizeAutoReset(player.infinityAuto)
+    player.metaAutomations = sanitizeMetaAutomations(player.metaAutomations)
     //层级结构校验:丢弃非规范键;临时层不存档,清空后由下一次结构阶段按新层级重建
     sanitizeLayers()
     clearTempLayers()

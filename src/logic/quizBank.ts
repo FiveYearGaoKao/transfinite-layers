@@ -35,7 +35,7 @@ const BANK: BankQuestionDef[] = [
   },
   {
     id: 'bank-base',
-    text: '《序数增量中》，序数进制的初始值是多少?',
+    text: '《序数增量》中，序数进制的初始值是多少?',
     options: ['8', '10', '2', '100'],
     correct: 1,
     unlocked: () => true,

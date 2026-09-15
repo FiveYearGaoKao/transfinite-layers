@@ -220,7 +220,7 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     description: '解锁自动化的"买最大"模式,每级使批量购买数量翻倍',
     maxAmount: new Decimal(10),
     cost(n: Decimal): Decimal {
-      return new Decimal(10).mul(new Decimal(1.5).pow(n)).floor()
+      return new Decimal(10).mul(n.add(1)).floor()
     },
     require: [],
     canBuy: () => hasAchievement('a21'),
@@ -234,7 +234,7 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     category: 'auto',
     description: '解锁层级页"购买模式"开关(买1个/买最大)和"全部最大"按钮(快捷键M)',
     maxAmount: new Decimal(1),
-    cost: () => new Decimal(100),
+    cost: () => new Decimal(50),
     require: [['auto-batch', new Decimal(5)]],
     canBuy: () => true,
   },

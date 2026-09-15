@@ -9,8 +9,13 @@ import {
   infinityGain,
   type InfinityUpgradeDef,
 } from '@/compute/infinity'
-import { hasInfinityMilestone } from '@/compute/infinityMilestones'
-import { getInfinityAuto, toggleAutoInfinity } from '@/logic/infinity'
+import {
+  getMetaAutoCfg,
+  getMetaAutomation,
+  toggleMetaAuto,
+  META_AUTO_INFINITY,
+} from '@/logic/metaAutomations'
+import type { AutoResetConfig } from '@/data/types'
 import { registerSubtabCycler, unregisterSubtabCycler } from '@/app/navigation'
 import { infinityResetConfirm } from '@/app/uiActions'
 import InfinityUpgradeItem from './infinityUpgradeItem.vue'
@@ -35,10 +40,10 @@ onMounted(() =>
 )
 onUnmounted(() => unregisterSubtabCycler('infinity'))
 
-/**自动无限重置是否已解锁(无限里程碑im10);本页只控制总开关,精细配置在自动化页 */
-const autoUnlocked = computed(() => hasInfinityMilestone('im10'))
-/**自动无限重置配置 */
-const autoCfg = computed(() => getInfinityAuto())
+/**自动无限重置是否已解锁(无限里程碑im10;由元层自动化注册表判定);本页只控制总开关,精细配置在自动化页 */
+const autoUnlocked = computed(() => getMetaAutomation(META_AUTO_INFINITY)?.isUnlocked() ?? false)
+/**自动无限重置配置(元层自动化'infinity'的配置) */
+const autoCfg = computed<AutoResetConfig>(() => getMetaAutoCfg<AutoResetConfig>(META_AUTO_INFINITY))
 /**自动已开启但一个触发条件都没设(条件配置在自动化页的"无限"子标签) */
 const autoNeedsConfig = computed(
   () =>
@@ -87,7 +92,7 @@ const resetButtonText = computed(() =>
       <button
         v-if="autoUnlocked"
         :class="['toggle', autoCfg.enabled ? 'toggle-on' : 'toggle-off']"
-        @click="toggleAutoInfinity()"
+        @click="toggleMetaAuto(META_AUTO_INFINITY)"
       >
         自动:{{ autoCfg.enabled ? '开' : '关' }}
       </button>
