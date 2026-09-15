@@ -8,19 +8,19 @@ import { calculate, registerEffect } from './effects'
 import { softCap } from './softCap'
 import './energy'
 
-/**层级0点数生产软上限:阈值与强度(产量超过阈值后增长变缓,减缓逼近1.79e308终局) */
-export const LAYER0_CAP_THRESHOLD = 1e300
-export const LAYER0_CAP_POWER = 0.75
+/**维度生产软上限:阈值与强度(产量超过阈值后增长变缓) */
+export const DIM_CAP_THRESHOLD = Number.MAX_VALUE
+export const DIM_CAP_POWER = 0.8
 
-//层级0维度1的产量软上限注册为pointsGain目标上的custom效果(custom优先级最高,天然在其它点数获取加成之后生效)
+//维度产量软上限注册为production目标上的custom效果(custom优先级最高,天然在其它点数获取加成之后生效)
 registerEffect({
-  id: 'layer0-softcap',
-  name: '点数生产软上限',
-  target: 'pointsGain',
+  id: 'dimension-softcap',
+  name: '维度生产软上限',
+  target: 'production',
   type: 'custom',
   value: (_ctx, _base, _amount, current) =>
-    softCapValue(current ?? new Decimal(1), new Decimal(LAYER0_CAP_THRESHOLD), LAYER0_CAP_POWER),
-  isActive: (ctx) => isLayer0(ctx.pos) && ctx.id == 0,
+    softCapValue(current ?? new Decimal(1), new Decimal(DIM_CAP_THRESHOLD), DIM_CAP_POWER, 1),
+  //isActive: (ctx) => isLayer0(ctx.pos) && ctx.id == 0,
   text: '软上限 x{value}',
 })
 

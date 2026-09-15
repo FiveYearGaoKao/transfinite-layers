@@ -66,13 +66,13 @@ function progressPercent(def: ChallengeDef): number {
   return Math.max(0, Math.min(100, ratio.mul(100).toNumber()))
 }
 
-/**本次点击完成按钮预计完成的次数(至少1;解锁无限里程碑im2后可一次完成多次) */
+/**本次点击完成按钮预计完成的次数(至少1;解锁无限里程碑im3后可一次完成多次) */
 function batchCount(def: ChallengeDef): Decimal {
   return maxBatchCompletions(def).sub(completions(def)).max(1)
 }
-/**完成按钮文字:未解锁无限里程碑im2时为逐次完成 */
+/**完成按钮文字:未解锁无限里程碑im3时为逐次完成 */
 function completeButtonText(def: ChallengeDef): string {
-  if (!hasInfinityMilestone('im2')) return '完成并退出'
+  if (!hasInfinityMilestone('im3')) return '完成并退出'
   return `完成 ${formatWhole(batchCount(def))} 次`
 }
 </script>

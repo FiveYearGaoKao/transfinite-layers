@@ -34,24 +34,6 @@ registerEffect({
   },
 })
 
-// registerEffect({
-//   id: 'energy-softcap',
-//   name: '能量指数软上限',
-//   target: 'energy:base',
-//   type: 'mul',
-//   value(ctx) {
-//     const source = nextLayer(ctx.pos, 0)
-//     const S = getLayer(source)
-//     if (!S) return 1
-//     return S.energy.log10().log10().sub(1).recip()
-//   },
-//   isActive(ctx) {
-//     const source = nextLayer(ctx.pos, 0)
-//     const S = getLayer(source)
-//     return !!S && S.energy.gte(1e100)
-//   },
-// })
-
 /**某层能量给其低层所有维度的加成数值(只计本层贡献,含跨层强化) */
 export function energyBonus(layer: LayerId): Decimal {
   const exponent = crossLayerExponentBonus(

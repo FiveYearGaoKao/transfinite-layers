@@ -167,11 +167,11 @@ export function challengeRewardValue(def: ChallengeDef): string {
 }
 
 //------操作------
-/**进入/退出挑战时强制重置目标层(无视升级u7/u8;无限里程碑im3解锁后不再强制清空下层升级);目标层已不存在时不做重置 */
+/**进入/退出挑战时强制重置目标层(无视升级u7/u8;无限里程碑im2解锁后不再强制清空下层升级);目标层已不存在时不做重置 */
 function challengeReset(def: ChallengeDef) {
   const target = challengeResetTarget(def)
   if (!target) return
-  doReset(target, true, false, !hasInfinityMilestone('im3'))
+  doReset(target, true, false, !hasInfinityMilestone('im2'))
 }
 
 /**
@@ -235,10 +235,10 @@ export function maxBatchCompletions(def: ChallengeDef): Decimal {
 
 /**
  * 完成挑战(挑战卡完成按钮的统一入口)
- * 未解锁无限里程碑im2时退化为逐次完成(+1);解锁后一次结算到当前资源允许的最大完成次数,再退出挑战
+ * 未解锁无限里程碑im3时退化为逐次完成(+1);解锁后一次结算到当前资源允许的最大完成次数,再退出挑战
  */
 export function batchCompleteChallenge(def: ChallengeDef) {
-  if (!hasInfinityMilestone('im2')) {
+  if (!hasInfinityMilestone('im3')) {
     completeChallenge(def)
     return
   }
@@ -400,7 +400,7 @@ const CHALLENGES: ChallengeDef[] = [
     unlockLayer: [4],
     resetTarget: [4],
     goal(k: Decimal): Decimal {
-      return new Decimal(1e8).mul(new Decimal(10000).pow(k))
+      return new Decimal(1e8).mul(new Decimal(1e6).pow(k))
     },
     rewardEffects: [
       {

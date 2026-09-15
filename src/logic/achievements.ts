@@ -397,8 +397,7 @@ const normalAchievements: AchievementDef[] = [
     name: '三倍体',
     description: '使层级0加倍器的效果底数>=3',
     reward: 66,
-    isCompleted: () =>
-      slotValue({ target: 'b12:base', init: () => 0.2 }, { pos: [0], id: 1 }).gte(3),
+    isCompleted: () => slotValue({ target: 'b12:base', init: () => 2 }, { pos: [0], id: 1 }).gte(3),
   },
   {
     id: 'a57',
@@ -413,6 +412,20 @@ const normalAchievements: AchievementDef[] = [
     description: '无限重置至少10次',
     reward: 80,
     isCompleted: () => player.infinityResets.gte(10),
+  },
+  {
+    id: 'a61',
+    name: '快速无限',
+    description: '在1分钟内无限重置',
+    reward: 60,
+    isCompleted: () => player.infinityBestResetTime.lte(60),
+    effect: {
+      target: 'infinityGain',
+      type: 'mul',
+      value: () => new Decimal(1.6).sub(player.infinityBestResetTime.clamp(0, 60).mul(0.01)),
+      text: '无限点数 x{value}',
+    },
+    effectText: '根据无限重置最短时间加成无限点数获取',
   },
   {
     id: 'a68',

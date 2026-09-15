@@ -41,13 +41,13 @@ export const INFINITY_MILESTONES: InfinityMilestoneDef[] = [
     id: 'im2',
     resets: 2,
     name: '2 次无限重置',
-    description: '退出挑战时将结算尽可能多的完成次数',
+    description: '进入/退出挑战不再强制清空下层升级',
   },
   {
     id: 'im3',
     resets: 3,
     name: '3 次无限重置',
-    description: '进入/退出挑战不再强制清空下层升级',
+    description: '允许批量完成挑战(退出挑战时将结算尽可能多的完成次数)',
   },
   {
     id: 'im5',

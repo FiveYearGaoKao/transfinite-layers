@@ -5,12 +5,7 @@ import Decimal from 'break_eternity.js'
 import type { LayerId } from '@/data/types'
 import { DIMENSION_COUNT } from '@/data/constants'
 import { dimensionAmount } from '@/access'
-import {
-  LAYER0_CAP_THRESHOLD,
-  dimensionExponent,
-  dimensionMultiplier,
-  productionPerSecond,
-} from './dimensions'
+import { dimensionExponent, dimensionMultiplier, productionPerSecond } from './dimensions'
 import { resetGainBase } from './prestige'
 import {
   calculate,
@@ -21,7 +16,6 @@ import {
   type RegisteredEffect,
 } from './effects'
 import { isLayer0 } from '@/tools/ordinal'
-import { format } from '@/tools/format'
 
 /**统计明细的可折叠树节点 */
 export interface StatNode {
@@ -175,19 +169,19 @@ function pointsGainNode(pos: LayerId): StatNode {
     ...effectNodes(normal, key, pos, 0),
   ]
   //软上限(custom效果)的实际缩减比例:软上限前(普通加成后) vs 软上限后的最终值
-  if (b.parts.some((p) => p.e.type == 'custom')) {
-    const before = normal.reduce(
-      (acc, p) => (p.e.type == 'add' ? acc.add(p.value) : acc.mul(p.value)),
-      base,
-    )
-    children.push({
-      key: `${key}:softcap`,
-      label: `点数生产软上限(${format(new Decimal(LAYER0_CAP_THRESHOLD), 0)})`,
-      sign: 'x',
-      value: b.total.div(before),
-      children: [],
-    })
-  }
+  // if (b.parts.some((p) => p.e.type == 'custom')) {
+  //   const before = normal.reduce(
+  //     (acc, p) => (p.e.type == 'add' ? acc.add(p.value) : acc.mul(p.value)),
+  //     base,
+  //   )
+  //   children.push({
+  //     key: `${key}:softcap`,
+  //     label: `点数生产软上限(${format(new Decimal(LAYER0_CAP_THRESHOLD), 0)})`,
+  //     sign: 'x',
+  //     value: b.total.div(before),
+  //     children: [],
+  //   })
+  // }
   return { key, label: '点数获取', sign: '+', value: b.total, children }
 }
 
