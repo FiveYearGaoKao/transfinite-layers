@@ -14,19 +14,33 @@ import {
   type LayerAutomation,
   type LayerId,
 } from '@/data/types'
-import { getLayerOrder, layerKey, nextLayer } from '@/tools/ordinal'
+import { getLayerOrder, isLayer0, layerKey, nextLayer } from '@/tools/ordinal'
 import { hasKnowledge, knowledgeAmount } from '@/compute/knowledge'
 import { canBuyUpgrade, getUpgrades, hasUpgrade, upgradeCost } from '@/compute/upgrades'
 import { canReset, resetGain } from '@/compute/prestige'
 import { getBuyables } from '@/compute/buyables'
+import { hasInfinityMilestone } from '@/compute/infinityMilestones'
 import { buyBuyable, buyDimension, buyUpgrade } from './purchase'
 import { doReset } from './reset'
+
+//------自动化类型id------
+//各来源统一引用这里的常量:注册表、配置读写、UI(层级页的逐项开关等)都不再手写类型字符串
+/**维度自动化id */
+export const AUTO_DIMS_ID = 'dims'
+/**可购买自动化id */
+export const AUTO_BUYABLES_ID = 'buyables'
+/**升级自动化id */
+export const AUTO_UPGRADES_ID = 'upgrades'
+/**自动重置id(层级) */
+export const AUTO_RESET_ID = 'reset'
+/**购买型自动化id(带逐项开关的自动化) */
+export type AutoBuyTypeId = typeof AUTO_DIMS_ID | typeof AUTO_BUYABLES_ID | typeof AUTO_UPGRADES_ID
 
 //------自动化注册表------
 /**所有自动化类型 */
 export const AUTOMATIONS: AutomationDef[] = [
   {
-    id: 'dims',
+    id: AUTO_DIMS_ID,
     name: '维度自动化',
     configKind: 'buy',
     defaultCfg: () => defaultAutoBuy(),
@@ -39,7 +53,7 @@ export const AUTOMATIONS: AutomationDef[] = [
     onTick: (pos, cfg) => autoBuyDims(pos, cfg as AutoBuyConfig),
   },
   {
-    id: 'buyables',
+    id: AUTO_BUYABLES_ID,
     name: '可购买自动化',
     configKind: 'buy',
     defaultCfg: () => defaultAutoBuy(2),
@@ -53,7 +67,7 @@ export const AUTOMATIONS: AutomationDef[] = [
     onTick: (pos, cfg) => autoBuyBuyables(pos, cfg as AutoBuyConfig),
   },
   {
-    id: 'reset',
+    id: AUTO_RESET_ID,
     name: '自动重置',
     configKind: 'reset',
     defaultCfg: () => defaultAutoReset(),
@@ -65,7 +79,7 @@ export const AUTOMATIONS: AutomationDef[] = [
     onTick: (pos, cfg) => autoReset(pos, cfg as AutoResetConfig),
   },
   {
-    id: 'upgrades',
+    id: AUTO_UPGRADES_ID,
     name: '升级自动化',
     configKind: 'buy',
     //升级为一次性购买,不支持"买最大"
@@ -140,9 +154,9 @@ export function getLayerAutomation(pos: LayerId): LayerAutomation {
   if (!auto.cfgs) {
     const old = auto as unknown as Record<string, unknown>
     auto.cfgs = {}
-    if (old.dims) auto.cfgs['dims'] = old.dims as AutoConfig
-    if (old.buyables) auto.cfgs['buyables'] = old.buyables as AutoConfig
-    if (old.reset) auto.cfgs['reset'] = old.reset as AutoConfig
+    if (old.dims) auto.cfgs[AUTO_DIMS_ID] = old.dims as AutoConfig
+    if (old.buyables) auto.cfgs[AUTO_BUYABLES_ID] = old.buyables as AutoConfig
+    if (old.reset) auto.cfgs[AUTO_RESET_ID] = old.reset as AutoConfig
     delete old.dims
     delete old.buyables
     delete old.reset
@@ -159,14 +173,28 @@ export function getLayerAutomation(pos: LayerId): LayerAutomation {
   return auto
 }
 
+/**
+ * 无限重置时的自动化配置处理:清空各层配置(无限重置是"一切从头开始"),
+ * 但拥有无限里程碑im6时保留层级0那一份(该里程碑让层级0的自动化跨无限重置存续)
+ */
+export function resetAutomationsForInfinityReset() {
+  const layer0Key = layerKey([0])
+  if (!player.automations) player.automations = {}
+  const keep = hasInfinityMilestone('im6') ? player.automations[layer0Key] : undefined
+  player.automations = {}
+  if (keep) player.automations[layer0Key] = keep
+}
+
 //------解锁判断------
-/**某层维度自动购买是否解锁(0阶来源层nextLayer(pos,0)购买u4) */
+/**某层维度自动购买是否解锁(0阶来源层nextLayer(pos,0)购买u4;无限里程碑im6让层级0不再依赖它) */
 export function dimsAutoUnlocked(pos: LayerId): boolean {
+  if (isLayer0(pos) && hasInfinityMilestone('im6')) return true
   const source = nextLayer(pos, 0)
   return getLayer(source) != undefined && hasUpgrade(source, 4)
 }
-/**某层可购买自动购买是否解锁(0阶来源层nextLayer(pos,0)购买u5) */
+/**某层可购买自动购买是否解锁(0阶来源层nextLayer(pos,0)购买u5;无限里程碑im6让层级0不再依赖它) */
 export function buyablesAutoUnlocked(pos: LayerId): boolean {
+  if (isLayer0(pos) && hasInfinityMilestone('im6')) return true
   const source = nextLayer(pos, 0)
   return getLayer(source) != undefined && hasUpgrade(source, 5)
 }
@@ -181,25 +209,22 @@ export function autoUpgradeUnlocked(pos: LayerId): boolean {
 
 //------开关操作------
 /**某层某维度/可购买/升级项是否自动 */
-export function isAutoItem(
-  pos: LayerId,
-  type: 'dims' | 'buyables' | 'upgrades',
-  id: number,
-): boolean {
+export function isAutoItem(pos: LayerId, type: AutoBuyTypeId, id: number): boolean {
   return (getLayerAutomation(pos).cfgs[type] as AutoBuyConfig | undefined)?.perItem[id] === true
 }
 /**切换某层某维度/可购买/升级项的自动开关 */
-export function toggleAutoItem(pos: LayerId, type: 'dims' | 'buyables' | 'upgrades', id: number) {
+export function toggleAutoItem(pos: LayerId, type: AutoBuyTypeId, id: number) {
   const cfg = getLayerAutomation(pos).cfgs[type] as AutoBuyConfig
   cfg.perItem[id] = !cfg.perItem[id]
 }
 /**某层自动重置开关是否开启 */
 export function resetAutoEnabled(pos: LayerId): boolean {
-  return (getLayerAutomation(pos).cfgs.reset as AutoResetConfig | undefined)?.enabled ?? false
+  const cfg = getLayerAutomation(pos).cfgs[AUTO_RESET_ID] as AutoResetConfig | undefined
+  return cfg?.enabled ?? false
 }
 /**切换某层自动重置开关 */
 export function toggleResetAuto(pos: LayerId) {
-  const cfg = getLayerAutomation(pos).cfgs.reset as AutoResetConfig
+  const cfg = getLayerAutomation(pos).cfgs[AUTO_RESET_ID] as AutoResetConfig
   cfg.enabled = !cfg.enabled
 }
 /**某层是否有自动化处于激活状态 */
@@ -250,10 +275,10 @@ export function updateAutomations(_dt: Decimal) {
 }
 /**更新单个层级的自动化 */
 function updateLayerAutomation(e: LayerEntry) {
-  const auto = player.automations[layerKey(e.pos)]
-  if (!auto) return
   const L = e.L
   if (!L.active) return
+  //配置缺失时按全局模板(无模板则默认)补齐:自动化不再依赖"玩家打开过该层页面"
+  const auto = getLayerAutomation(e.pos)
   //收集已开启且已解锁的项，按优先级排序
   const items = AUTOMATIONS.filter((def) => {
     if (!def.isUnlocked(e.pos)) return false

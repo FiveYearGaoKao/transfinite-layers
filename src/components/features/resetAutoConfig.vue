@@ -1,16 +1,22 @@
 <script setup lang="ts">
 //自动重置类配置(时间/点数/倍率)的共用编辑控件
-//层级"自动重置"卡与"自动无限重置"卡共用同一份UI,避免两处模板分叉
+//层级"自动重置"卡、"自动无限重置"卡与"自动解锁新层级"卡共用同一份UI,避免多处模板分叉
 //控件只读props,改动以change事件上抛(由调用方写回player中的配置对象)
 //布局:三列网格——判定方式独占一行,第二行为三个条件开关,第三行为三个输入框
+//hideMult=true时隐藏"倍率"一列(该条件下恒成立时用,如临时层点数恒为0),网格自动变为两列
 //输入框常驻(条件关闭时禁用置灰),开关条件不会改变卡片高度
 import Decimal from 'break_eternity.js'
 import type { AutoResetConfig } from '@/data/types'
 
-const props = defineProps<{
-  /**被编辑的配置(只读,取值用) */
-  cfg: AutoResetConfig
-}>()
+const props = withDefaults(
+  defineProps<{
+    /**被编辑的配置(只读,取值用) */
+    cfg: AutoResetConfig
+    /**隐藏"倍率"条件(该条件下恒成立时用,如临时层点数恒为0) */
+    hideMult?: boolean
+  }>(),
+  { hideMult: false },
+)
 const emit = defineEmits<{ change: [patch: Partial<AutoResetConfig>] }>()
 
 /**条件含义的悬浮说明(层级与无限两种上下文的通用措辞) */
@@ -33,7 +39,7 @@ function parseNumber(v: string, fallback: number): number {
 }
 </script>
 <template>
-  <div class="condGrid">
+  <div class="condGrid" :class="{ noMult: props.hideMult }">
     <button
       class="spanAll"
       :title="HINT.combine"
@@ -57,6 +63,7 @@ function parseNumber(v: string, fallback: number): number {
       点数:{{ props.cfg.usePoint ? '开' : '关' }}
     </button>
     <button
+      v-if="!props.hideMult"
       :class="['toggle', props.cfg.useMult ? 'toggle-on' : 'toggle-off']"
       :title="HINT.mult"
       @click="emit('change', { useMult: !props.cfg.useMult })"
@@ -84,6 +91,7 @@ function parseNumber(v: string, fallback: number): number {
       "
     />
     <input
+      v-if="!props.hideMult"
       :disabled="!props.cfg.useMult"
       :value="props.cfg.mult.toString()"
       @change="
@@ -101,6 +109,10 @@ div.condGrid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px 6px;
   width: 100%;
+}
+/*隐藏"倍率"条件时改为两列,保持上下对齐*/
+div.condGrid.noMult {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 /*判定方式独占一行(避免挤占下面两行的三列),但按钮本身保持内容宽度并居中*/
 div.condGrid > button.spanAll {

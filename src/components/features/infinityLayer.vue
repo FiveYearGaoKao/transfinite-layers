@@ -40,11 +40,11 @@ onMounted(() =>
 )
 onUnmounted(() => unregisterSubtabCycler('infinity'))
 
-/**自动无限重置是否已解锁(无限里程碑im10;由元层自动化注册表判定);本页只控制总开关,精细配置在自动化页 */
+/**自动无限重置是否已解锁(无限里程碑im15;由元层自动化注册表判定);本页只控制总开关,精细配置在自动化页 */
 const autoUnlocked = computed(() => getMetaAutomation(META_AUTO_INFINITY)?.isUnlocked() ?? false)
 /**自动无限重置配置(元层自动化'infinity'的配置) */
 const autoCfg = computed<AutoResetConfig>(() => getMetaAutoCfg<AutoResetConfig>(META_AUTO_INFINITY))
-/**自动已开启但一个触发条件都没设(条件配置在自动化页的"无限"子标签) */
+/**自动已开启但一个触发条件都没设(条件配置在自动化页的"元层自动化"子标签) */
 const autoNeedsConfig = computed(
   () =>
     autoCfg.value.enabled &&
@@ -101,7 +101,7 @@ const resetButtonText = computed(() =>
       你拥有 <span class="text-highlight">{{ formatWhole(player.infinityPoints) }}</span> 无限点数
     </span>
     <span v-if="autoNeedsConfig" class="text faint">
-      自动无限重置已开启,但尚未设置触发条件(见自动化页→无限)
+      自动无限重置已开启,但尚未设置触发条件(见自动化页→元层自动化)
     </span>
 
     <div v-if="subtab == 'upgrades'" id="infinityUpgrades">

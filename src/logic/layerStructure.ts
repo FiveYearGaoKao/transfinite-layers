@@ -115,7 +115,9 @@ function moveAutomation(fromKey: string, toKey: string) {
  * 窗口已满:底部pinnedSlotCount个槽位固定,顶部槽位整体下移一格(最低的那个被淘汰)
  * 自动化配置跟随层级对象搬移(临时层的配置转给新层级;新临时层按全局配置重建)
  * 阶内容未定义时拒绝解锁,避免高阶层级静默套用低阶公式
- * @returns 新层级坐标(同时把视角切到新层级);未解锁时返回原临时层坐标
+ * 注:本模块只负责结构变更,**不改视角**;需要跟随到新层级时由调用方(如手动重置)拿返回值自行切换
+ * @param tempPos 临时层坐标
+ * @returns 新层级坐标;未解锁时返回原临时层坐标
  */
 export function unlockNextLayer(tempPos: LayerId): LayerId {
   const L = getLayer(tempPos)
@@ -153,8 +155,6 @@ export function unlockNextLayer(tempPos: LayerId): LayerId {
   //重建临时层(预览下一层):其高度为新顶层高度+1,无需等下一次结构阶段校正
   temp.tempLayers[tempKey] = initializeLayer(L.level.add(1))
   invalidateLayerOrder()
-  //临时层转为真实层级后跳转到新层级,方便玩家在新层级购买等操作
-  player.layerSubtab = realPos
   return realPos
 }
 

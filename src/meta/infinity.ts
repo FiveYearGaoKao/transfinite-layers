@@ -14,7 +14,7 @@ registerMetaLayer({
   onTick: (dt) => {
     //累计本次无限经历的时间(供无限升级iu33等使用;无限重置时归零)
     player.infinityRunTime = player.infinityRunTime.add(dt)
-    //无限里程碑:被动无限点数(im100)与自动无限重置(im10)
+    //无限里程碑:被动无限点数(im100)与自动无限重置(im15)
     updateInfinityMilestones(dt)
   },
   component: InfinityLayer,

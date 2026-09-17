@@ -21,6 +21,8 @@ export interface InfinityMilestoneDef {
   effect?: EffectDef
   /**效果数值的文字(卡片第三行;缺省从effect自动生成,无effect时显示"已解锁/未解锁") */
   effectText?(): string
+  /**解锁时追加写进日志的引导(如"去自动化页看看";缺省只写里程碑名) */
+  unlockHint?: string
 }
 
 /**所有已定义的无限里程碑(按解锁阈值升序) */
@@ -62,6 +64,12 @@ export const INFINITY_MILESTONES: InfinityMilestoneDef[] = [
     },
   },
   {
+    id: 'im6',
+    resets: 6,
+    name: '6 次无限重置',
+    description: '层级0的维度与可购买自动化不再依赖层级1的u4/u5,且无限重置后其配置保留',
+  },
+  {
     id: 'im8',
     resets: 8,
     name: '8 次无限重置',
@@ -71,7 +79,15 @@ export const INFINITY_MILESTONES: InfinityMilestoneDef[] = [
     id: 'im10',
     resets: 10,
     name: '10 次无限重置',
-    description: '解锁自动无限重置(配置在自动化页的"无限"子标签)',
+    description: '解锁自动解锁新层级(默认开启,配置在自动化页的"元层自动化"子标签)',
+    unlockHint: '自动解锁新层级已默认开启,可在自动化页→元层自动化查看或调整触发条件',
+  },
+  {
+    id: 'im15',
+    resets: 15,
+    name: '15 次无限重置',
+    description: '解锁自动无限重置(配置在自动化页的"元层自动化"子标签)',
+    unlockHint: '自动无限重置已解锁,可在自动化页→元层自动化配置触发条件',
   },
   {
     id: 'im100',

@@ -125,6 +125,8 @@ export interface MetaAutomationDef<T extends AutoConfig = AutoConfig> {
   name: string
   /**配置形状(决定用哪个配置UI组件) */
   configKind: AutoConfigKind
+  /**配置编辑器里隐藏"倍率"条件(该条件下恒成立时用,如临时层点数恒为0) */
+  hideMult?: boolean
   /**是否已解锁 */
   isUnlocked(): boolean
   /**创建默认配置 */

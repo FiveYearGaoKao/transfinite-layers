@@ -18,6 +18,9 @@ import type {
 import { registerSubtabCycler, unregisterSubtabCycler } from '@/app/navigation'
 import { getMetaAutoCfg, getMetaAutomations, toggleMetaAuto } from '@/logic/metaAutomations'
 import {
+  AUTO_BUYABLES_ID,
+  AUTO_DIMS_ID,
+  AUTO_UPGRADES_ID,
   AUTOMATIONS,
   applyAllGlobalAuto,
   applyGlobalAuto,
@@ -102,11 +105,11 @@ const visibleDefs = computed(() => {
 })
 /**某类型卡片的逐项列表(维度/可购买/升级;全局模式以order 0为准;name为按钮文字,title为悬浮说明) */
 function cardItems(def: AutomationDef): { id: number; name: string; title?: string }[] {
-  if (def.id == 'dims') {
+  if (def.id == AUTO_DIMS_ID) {
     const n = view.value == 'global' ? DIMENSION_COUNT : dimCount.value
     return Array.from({ length: n }, (_, i) => ({ id: i, name: `维度${i + 1}` }))
   }
-  if (def.id == 'buyables') {
+  if (def.id == AUTO_BUYABLES_ID) {
     const list = view.value == 'global' ? getBuyables(0) : buyableList.value
     return list.map((b) => ({
       id: b.id,
@@ -114,7 +117,7 @@ function cardItems(def: AutomationDef): { id: number; name: string; title?: stri
       title: renderLayerPlaceholders(b.description, selectedPos.value),
     }))
   }
-  if (def.id == 'upgrades') {
+  if (def.id == AUTO_UPGRADES_ID) {
     const list = view.value == 'global' ? getUpgrades(0) : upgradeList.value
     //升级数量多,按钮只显示编号u1~u9,全名与说明放tooltip,避免卡片被撑宽
     return list.map((u) => ({
@@ -211,7 +214,11 @@ function metaOn(def: MetaAutomationDef): boolean {
           @toggle="toggleMetaAuto(def.id)"
           @change="applyPatch(metaCfg(def.id), $event)"
         >
-          <ResetAutoConfig :cfg="metaCfg(def.id)" @change="applyPatch(metaCfg(def.id), $event)" />
+          <ResetAutoConfig
+            :cfg="metaCfg(def.id)"
+            :hide-mult="def.hideMult === true"
+            @change="applyPatch(metaCfg(def.id), $event)"
+          />
         </AutoCard>
       </template>
 

@@ -24,7 +24,10 @@ export async function resetLayerConfirm() {
       confirmText: '确认重置',
       cancelText: '取消',
     }))
-  if (confirmed) doReset(pos)
+  if (!confirmed) return
+  //解锁的后续动作:重置临时层会把它转为真实层级,把视角切到新层级方便后续购买
+  const unlocked = doReset(pos)
+  if (unlocked) player.layerSubtab = unlocked
 }
 
 /**挑战4"后悔"按钮:不获得资源的强制重置(点数清零恢复价格),始终二次确认 */

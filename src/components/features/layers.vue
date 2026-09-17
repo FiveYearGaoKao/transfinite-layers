@@ -10,6 +10,7 @@ import { canReset, resetGain } from '@/compute/prestige'
 import { crossLayerFactor, crossLayerPenalty, crossLayerReward } from '@/compute/crossLayer'
 import { buyDimension, buyDimensionMax, canAfford, maxBuyAll } from '@/logic/purchase'
 import {
+  AUTO_DIMS_ID,
   dimsAutoUnlocked,
   isAutoItem,
   resetAutoEnabled,
@@ -84,6 +85,14 @@ function toggleBuyMax() {
 function buyDim(id: number) {
   if (buyMaxMode.value) buyDimensionMax(player.layerSubtab, id)
   else buyDimension(player.layerSubtab, id)
+}
+/**本层维度id是否自动购买 */
+function dimAutoOn(id: number): boolean {
+  return isAutoItem(player.layerSubtab, AUTO_DIMS_ID, id)
+}
+/**切换本层某维度的自动购买开关 */
+function toggleDimAuto(id: number) {
+  toggleAutoItem(player.layerSubtab, AUTO_DIMS_ID, id)
 }
 </script>
 <template>
@@ -162,14 +171,10 @@ function buyDim(id: number) {
           </button>
           <button
             v-if="dimsAutoUnlocked(player.layerSubtab)"
-            :class="[
-              'toggle',
-              'compact',
-              isAutoItem(player.layerSubtab, 'dims', i - 1) ? 'toggle-on' : 'toggle-off',
-            ]"
-            @click="toggleAutoItem(player.layerSubtab, 'dims', i - 1)"
+            :class="['toggle', 'compact', dimAutoOn(i - 1) ? 'toggle-on' : 'toggle-off']"
+            @click="toggleDimAuto(i - 1)"
           >
-            自动:{{ isAutoItem(player.layerSubtab, 'dims', i - 1) ? '开' : '关' }}
+            自动:{{ dimAutoOn(i - 1) ? '开' : '关' }}
           </button>
         </div>
       </template>

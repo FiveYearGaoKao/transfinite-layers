@@ -5,11 +5,19 @@
 //- 删层范围与解锁新层级由logic/layerStructure负责
 import Decimal from 'break_eternity.js'
 import { initializeDimensions, type LayerId } from '@/data/types'
-import { getLayer, getUnlockedNormalAchievementCount, hasAchievement } from '@/access'
+import {
+  getLayer,
+  getLayerName,
+  getOrderedTempLayers,
+  getUnlockedNormalAchievementCount,
+  hasAchievement,
+} from '@/access'
 import { isLayer0, isTempLayer } from '@/tools/ordinal'
 import { canReset, resetGain } from '@/compute/prestige'
 import { hasUpgrade } from '@/compute/upgrades'
 import { hasInfinityUpgrade } from '@/compute/infinity'
+import { hasLayerContent } from '@/compute/layerContent'
+import { addLog } from '@/data/log'
 import { checkResetAchievements } from './achievements'
 import { unlockNextLayer, wipeLayerScope } from './layerStructure'
 
@@ -64,42 +72,63 @@ function resetProgress(layer: LayerId) {
 }
 
 /**
- * 点击重置按钮
- * @param forced 是否为强制重置(级联重置下层时用,此时不重置本层自身进度)
- * @param gainResource 是否获得资源
+ * 重置一个层级
+ * "是否获得资源"与"是否强制重置"绑定:非强制=晋升(拿收益并重置自身进度),强制=级联重置下层(不拿收益、不动自身)——
+ * 因此只用一个forced参数表达;强制重置同时跳过canReset判定
+ * @param forced 是否为强制重置(级联重置下层时用:不获得资源、不重置本层自身进度、不判定重置成就,且不检查canReset)
  * @param forceClearUpgrades 是否无视升级u8强制清空下层升级(进入/退出挑战时用)
+ * @returns 本次重置解锁出的新层级坐标(仅重置临时层时有值;视角切换由调用方负责,见app/uiActions)
  */
 export function doReset(
   layer: LayerId,
   forced: boolean = false,
-  gainResource: boolean = true,
   forceClearUpgrades: boolean = false,
-) {
-  if (forced || canReset(layer)) {
-    if (isLayer0(layer)) return
-    const L = getLayer(layer)
-    //先算收益并判定重置瞬间成就(须在清空能量/重置下层之前,且不计级联强制重置)
-    const gain = gainResource && L?.active ? resetGain(layer) : new Decimal(0)
-    if (gainResource && L?.active && !forced) checkResetAchievements(layer, gain)
-    //晋升:顶层重置(点击/自动重置)同时重置本层自身进度
-    if (!forced) resetProgress(layer)
-    //获得本层级资源
-    if (gainResource && L && L.active) {
-      L.points = L.points.add(gain)
-      L.totalPoints = L.totalPoints.add(gain)
-      L.resetCount = L.resetCount.add(1)
-      L.bestPoints = L.bestPoints.max(gain)
-    }
-    //重置下层:先删除开区间(prevLayer(layer), layer)内的层级,再清空并级联重置下层目标
-    //(0阶层级的下层就是相邻槽位,区间为空,等价于"只清空不删层")
-    const prev = wipeLayerScope(layer)
-    resetData(prev, {
-      keepUpgrades: !forceClearUpgrades && hasUpgrade(layer, 8),
-    })
-    doReset(prev, true, false, forceClearUpgrades)
-    //临时层:转为真实层级(解锁下一个层级),视角由layerStructure切到新层级
-    if (isTempLayer(layer)) unlockNextLayer(layer)
+): LayerId | undefined {
+  if (!forced && !canReset(layer)) return undefined
+  if (isLayer0(layer)) return undefined
+  const L = getLayer(layer)
+  //是否结算收益(强制级联只负责清空下层)
+  const gainEnabled = !forced && L?.active == true
+  //先算收益并判定重置瞬间成就(须在清空能量/重置下层之前,且不计级联强制重置)
+  const gain = gainEnabled ? resetGain(layer) : new Decimal(0)
+  if (gainEnabled) checkResetAchievements(layer, gain)
+  //晋升:重置本层自身进度(强制级联不动自身)
+  if (!forced) resetProgress(layer)
+  //获得本层级资源
+  if (gainEnabled && L) {
+    L.points = L.points.add(gain)
+    L.totalPoints = L.totalPoints.add(gain)
+    L.resetCount = L.resetCount.add(1)
+    L.bestPoints = L.bestPoints.max(gain)
   }
+  //重置下层:先删除开区间(prevLayer(layer), layer)内的层级,再清空并级联重置下层目标
+  //(0阶层级的下层就是相邻槽位,区间为空,等价于"只清空不删层")
+  const prev = wipeLayerScope(layer)
+  resetData(prev, {
+    keepUpgrades: !forceClearUpgrades && hasUpgrade(layer, 8),
+  })
+  doReset(prev, true, forceClearUpgrades)
+  //临时层:转为真实层级(解锁下一个层级);视角是否切到新层级由调用方决定
+  return isTempLayer(layer) ? unlockNextLayer(layer) : undefined
+}
+
+/**
+ * 找出当前可自动解锁的临时层(该阶内容已定义且满足解锁条件,即canReset)
+ * 升序遍历:基础窗口的[-1]优先,再轮到更高阶窗口的临时层
+ */
+export function findUnlockableTempLayer(): LayerId | undefined {
+  return getOrderedTempLayers().find((e) => hasLayerContent(e.order) && canReset(e.pos))?.pos
+}
+
+/**
+ * 自动解锁指定临时层(元层自动化"自动解锁新层级"):与手动点击临时层重置等价(新层级带上本次收益),
+ * 但不抢视角、不弹二次确认
+ * @returns 新层级坐标;未解锁时返回undefined
+ */
+export function autoUnlockTempLayer(tempPos: LayerId): LayerId | undefined {
+  const newPos = doReset(tempPos)
+  if (newPos) addLog('automator', `自动解锁了${getLayerName(newPos)}`)
+  return newPos
 }
 
 /**
@@ -112,5 +141,5 @@ export function resetRunWithoutGain(pos: LayerId) {
   const L = getLayer(pos)
   if (!L || !L.active) return
   resetData(pos, { keepUpgrades: true })
-  doReset(pos, true, false, false)
+  doReset(pos, true, false)
 }

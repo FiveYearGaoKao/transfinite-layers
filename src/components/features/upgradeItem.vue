@@ -5,7 +5,7 @@ import type { UpgradeDef } from '@/compute/upgrades'
 import { canBuyUpgrade, hasUpgrade, upgradeCost, upgradeEffectValue } from '@/compute/upgrades'
 import { renderLayerPlaceholders } from '@/compute/effects'
 import { buyUpgrade } from '@/logic/purchase'
-import { isAutoItem } from '@/logic/automations'
+import { AUTO_UPGRADES_ID, isAutoItem } from '@/logic/automations'
 
 //自动升级的样式暂时放弃
 const props = defineProps<{
@@ -13,7 +13,7 @@ const props = defineProps<{
   def: UpgradeDef
 }>()
 /**该升级是否在本层自动购买列表中(用于边框高亮指示) */
-const autoOn = () => isAutoItem(props.pos, 'upgrades', props.def.id)
+const autoOn = () => isAutoItem(props.pos, AUTO_UPGRADES_ID, props.def.id)
 </script>
 <template>
   <button

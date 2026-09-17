@@ -120,6 +120,23 @@ export function forEachLayer(dir: 'asc' | 'desc', fn: (e: LayerEntry) => void) {
   for (const e of getOrderedLayers(dir)) fn(e)
 }
 
+/**
+ * 获取全部临时层的条目(按坐标升序)
+ * 临时层是"将要解锁的最高层级"的预览,只存在于temp.tempLayers;其阶与真实层级同一套算法
+ * (如基础窗口的[-1]是0阶,ω窗口的[1,-1]也是0阶)
+ */
+export function getOrderedTempLayers(): LayerEntry[] {
+  const keys = Object.keys(temp.tempLayers).sort((a, b) => compareLayer(posArray(a), posArray(b)))
+  const list: LayerEntry[] = []
+  for (const key of keys) {
+    const L = temp.tempLayers[key]
+    if (!L) continue
+    const pos = posArray(key)
+    list.push({ key, pos, order: getLayerOrder(pos), L })
+  }
+  return list
+}
+
 //------相邻与高度关系------
 /**
  * 获取某层的前驱层级(纯坐标运算,O(1))

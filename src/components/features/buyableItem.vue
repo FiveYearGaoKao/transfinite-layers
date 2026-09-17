@@ -11,7 +11,12 @@ import {
   canBuyBuyable,
 } from '@/compute/buyables'
 import { buyBuyable, buyBuyableMax } from '@/logic/purchase'
-import { buyablesAutoUnlocked, isAutoItem, toggleAutoItem } from '@/logic/automations'
+import {
+  AUTO_BUYABLES_ID,
+  buyablesAutoUnlocked,
+  isAutoItem,
+  toggleAutoItem,
+} from '@/logic/automations'
 
 const props = withDefaults(
   defineProps<{
@@ -35,6 +40,12 @@ function buy() {
   if (props.maxBuy) buyBuyableMax(props.pos, props.def.id)
   else buyBuyable(props.pos, props.def.id)
 }
+/**该可购买是否在自动购买列表中 */
+const autoOn = () => isAutoItem(props.pos, AUTO_BUYABLES_ID, props.def.id)
+/**切换该可购买的自动购买开关 */
+function toggleAuto() {
+  toggleAutoItem(props.pos, AUTO_BUYABLES_ID, props.def.id)
+}
 </script>
 <template>
   <div class="buyableItem">
@@ -57,14 +68,10 @@ function buy() {
       </button>
       <button
         v-if="buyablesAutoUnlocked(props.pos)"
-        :class="[
-          'toggle',
-          'compact',
-          isAutoItem(props.pos, 'buyables', props.def.id) ? 'toggle-on' : 'toggle-off',
-        ]"
-        @click="toggleAutoItem(props.pos, 'buyables', props.def.id)"
+        :class="['toggle', 'compact', autoOn() ? 'toggle-on' : 'toggle-off']"
+        @click="toggleAuto()"
       >
-        自动:{{ isAutoItem(props.pos, 'buyables', props.def.id) ? '开' : '关' }}
+        自动:{{ autoOn() ? '开' : '关' }}
       </button>
     </div>
   </div>

@@ -171,7 +171,7 @@ export function challengeRewardValue(def: ChallengeDef): string {
 function challengeReset(def: ChallengeDef) {
   const target = challengeResetTarget(def)
   if (!target) return
-  doReset(target, true, false, !hasInfinityMilestone('im2'))
+  doReset(target, true, !hasInfinityMilestone('im2'))
 }
 
 /**
