@@ -2,7 +2,8 @@
 import Decimal from 'break_eternity.js'
 import { player } from '@/data/player'
 import { temp } from '@/data/temp'
-import { addValue, localSave } from '@/save/save'
+import { addValue } from '@/save/save'
+import { saveGame } from '@/app/saveActions'
 import { updateLayers, applyChallengePenalties } from '@/logic/update'
 import { updateAutomations } from '@/logic/automations'
 import { updateMetaAutomations } from '@/logic/metaAutomations'
@@ -28,8 +29,8 @@ export function autoSaveLoop() {
   saveTimer++
   if (saveTimer >= settings.autoSaveInterval) {
     saveTimer = 0
-    localSave()
-    addLog('info', '游戏已保存')
+    //保存失败(存档含NaN/非法值)由saveGame统一写日志并弹一次警告
+    if (saveGame()) addLog('info', '游戏已保存')
   }
 }
 /**上次报告的层级结构不变量问题(避免每帧刷屏) */

@@ -12,6 +12,7 @@ import { buildGlobalNodes, buildLayerNodes, type StatNode } from '@/compute/stat
 import LayerSelect from './layerSelect.vue'
 import StatTree from './statTree.vue'
 import { importSaveString, exportSaveString, getCurrentSlot, localSave } from '@/save/save'
+import { downloadTextFile, saveGame } from '@/app/saveActions'
 import { settings, saveSettings, cycleTheme, THEMES, type Settings } from '@/app/settings'
 import { temp } from '@/data/temp'
 import { type logType, addLog } from '@/data/log'
@@ -41,7 +42,7 @@ const isProd = import.meta.env.PROD
 /**快捷键说明列表(快捷键页显示;由注册表驱动,新增快捷键无需改动本文件) */
 const HOTKEY_HELP: HotkeyDef[] = getHotkeys()
 
-/**导出存档 */
+/**导出存档(即使存档存在问题也照常导出,便于排查;写档失败由saveGame负责提示,这里静默尝试同步) */
 const exportText = ref('')
 function doExport() {
   localSave()
@@ -69,16 +70,10 @@ function fileTimestamp(): string {
   const p = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`
 }
-/**把存档导出为txt文件(文件名:游戏名-版本号-当前时间.txt) */
+/**把存档导出为txt文件(文件名:游戏名-版本号-当前时间.txt;存档有问题时也照常导出) */
 function exportToFile() {
   localSave()
-  const blob = new Blob([exportSaveString()], { type: 'text/plain;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${gameName}-${gameVersion}-${fileTimestamp()}.txt`
-  a.click()
-  URL.revokeObjectURL(url)
+  downloadTextFile(exportSaveString(), `${gameName}-${gameVersion}-${fileTimestamp()}.txt`)
 }
 /**从txt文件读取并导入存档 */
 function importFromFile(e: Event) {
@@ -134,8 +129,7 @@ function cycleOfflineMode() {
 }
 /**手动保存到当前槽位 */
 function doManualSave() {
-  localSave()
-  addLog('info', '游戏已保存')
+  if (saveGame()) addLog('info', '游戏已保存')
 }
 /**设置自动保存间隔(秒),非法输入保持原值 */
 function setAutoSaveInterval(v: string) {

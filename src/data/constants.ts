@@ -1,6 +1,7 @@
 //游戏中的常量
-
+/**游戏名称 */
 export const gameName: string = 'TransfiniteLayers'
+/**当前版本号 */
 export const gameVersion: string = 'v0.1.3'
 /**无限重置的门槛:层级0点数达到 1.79e308(Number.MAX_VALUE,与成就a48同阈值) */
 export const INFINITY_UNLOCK_POINTS: number = Number.MAX_VALUE

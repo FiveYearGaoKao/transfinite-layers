@@ -11,6 +11,7 @@ import { unlockAchievementById } from '@/logic/achievements'
 import { seedRng } from './rng'
 import { migrate } from './migration'
 import { checkCode, CHECKSUM_VERSION, CHECKSUM_SALT } from './checksum'
+import { findInvalidValues, pruneToBlankShape } from './validate'
 import { versionComp } from '@/tools/utils'
 import { layerKey, posArray } from '@/tools/ordinal'
 import { addLog } from '@/data/log'
@@ -82,11 +83,6 @@ export function getSlotSummary(slot: number): SlotSummary {
 export function getSlotSummaries(): SlotSummary[] {
   return Array.from({ length: SAVE_SLOT_COUNT }, (_, i) => getSlotSummary(i))
 }
-/**指定槽位是否存在存档记录(无论内容是否有效) */
-export function hasSlotSave(slot: number): boolean {
-  return localStorage.getItem(gameName + '-save' + slot) != null
-}
-
 //------修改存档------
 /**player中类型为Decimal的属性名 */
 type decimalKey = { [K in keyof Player]: Player[K] extends Decimal ? K : never }[keyof Player]
@@ -151,8 +147,7 @@ function sanitizeLayers() {
   for (const key of Object.keys(player.layers)) {
     const L = player.layers[key]
     const pos = posArray(key)
-    const valid =
-      L != null && pos.length > 0 && pos.every((d) => Number.isInteger(d) && d >= 0)
+    const valid = L != null && pos.length > 0 && pos.every((d) => Number.isInteger(d) && d >= 0)
     if (!valid) {
       delete player.layers[key]
       continue
@@ -173,22 +168,42 @@ function verifySave(saveFile: Player): boolean {
   const code = checkCode(JSON.stringify(marked), saveFile.firstPlay ^ CHECKSUM_SALT)
   return previous == code
 }
-/**将存档转化为字符串 */
+/**将存档转化为字符串
+ * 写档前按空白档形状裁掉多余字段(旧存档残留的、已删除/改名的字段不会写下去);
+ * 校验码按裁剪后的对象计算(读档校验时对象已不含这些字段,两边一致) */
 function stringify(): string {
   const marked = markDecimals(player) as Record<string, unknown>
-  marked.checkCode = 0
-  marked.checkCode = checkCode(JSON.stringify(marked), player.firstPlay ^ CHECKSUM_SALT)
-  return compressToBase64(JSON.stringify(marked))
+  const pruned = pruneToBlankShape(marked) as Record<string, unknown>
+  logDroppedFields(marked, pruned)
+  pruned.checkCode = 0
+  pruned.checkCode = checkCode(JSON.stringify(pruned), player.firstPlay ^ CHECKSUM_SALT)
+  return compressToBase64(JSON.stringify(pruned))
+}
+/**每个会话是否已提示过"被裁掉的字段" */
+let droppedFieldsLogged = false
+/**开发构建下提示一次被裁掉的顶层字段(它们不会写进存档;若其中本该保存,说明忘了加进initializeSave) */
+function logDroppedFields(before: Record<string, unknown>, after: Record<string, unknown>) {
+  if (import.meta.env.PROD || droppedFieldsLogged) return
+  const dropped = Object.keys(before).filter((k) => !(k in after))
+  if (dropped.length == 0) return
+  droppedFieldsLogged = true
+  addLog('warning', `存档中存在当前版本已没有的字段,不会写入存档:${dropped.join('、')}`)
 }
 /**将字符串转化为Player对象 */
 function parse(s1: string): Player {
   return unmarkDecimals(JSON.parse(s1)) as Player
 }
-/**尝试从字符串导入存档，并返回错误码 */
+/**尝试从字符串导入存档，并返回错误码(0为成功) */
 function load(s: string): number {
   const s1 = decompressFromBase64(s) || 'null'
-  const saveFile = parse(s1)
-  if (saveFile == null || typeof saveFile != 'object') {
+  let saveFile: Player
+  try {
+    saveFile = parse(s1)
+  } catch {
+    addLog('error', '导入失败!存档格式不正确![错误代码:101]')
+    return 101
+  }
+  if (saveFile == null || typeof saveFile != 'object' || saveFile.layers == null) {
     addLog('error', '导入失败!存档格式不正确![错误代码:101]')
     return 101
   } else if (versionComp(saveFile.version, CHECKSUM_VERSION) >= 0 && !verifySave(saveFile)) {
@@ -211,7 +226,17 @@ function load(s: string): number {
       addLog('error', '导入失败!存档迁移出错![错误代码:400]')
       return 400
     }
-    Object.assign(player, saveFile)
+    //先铺一层空白存档的默认值,再套用导入的存档:旧存档没有的字段回到默认值
+    //(否则会保留当前存档的值,如导入v0.1.0存档后仍带着已购买的无限升级;一次assign也避免中间态)
+    const filled = Object.assign(initializeSave(), saveFile)
+    //写入player前最后一道校验:含NaN/非法Decimal的存档拒绝加载
+    //(校验的是补齐后的对象:旧档缺失的字段已由默认值补上,不会误判成"类型错误")
+    const problems = findInvalidValues(filled)
+    if (problems.length > 0) {
+      addLog('error', `导入失败!存档中存在非法数值![错误代码:251]\n${problems.join('\n')}`)
+      return 251
+    }
+    Object.assign(player, filled)
     player.version = gameVersion
     if (versionComp(saveFile.version, gameVersion) < 0) {
       addLog('warning', '存档版本过旧,部分迁移未执行,缺失内容已按默认值补齐')
@@ -233,18 +258,42 @@ function load(s: string): number {
     return 0
   }
 }
-/**保存存档到本地存储 */
-export function localSave(slot: number = currentSlot.value) {
-  localStorage.setItem(gameName + '-save' + slot, stringify())
+//------读档结果与写档保护------
+/**读档结果码:0为成功,LOAD_EMPTY为该槽位没有存档,其余为load()返回的错误码 */
+export const LOAD_EMPTY = -1
+
+/**最近一次保存被拒绝的原因列表(保存成功时为空数组) */
+let lastSaveProblems: string[] = []
+
+/**最近一次保存被拒绝的原因(成功时为空数组;供UI提示用) */
+export function getLastSaveProblems(): string[] {
+  return lastSaveProblems.slice()
 }
-/**从本地存储导入存档 */
-export function localLoad(slot: number = currentSlot.value): boolean {
-  const s = localStorage.getItem(gameName + '-save' + slot)
-  if (s == null) {
-    return false
-  } else {
-    return load(s) == 0
-  }
+/**读取某槽位的原始存档字符串(读档失败时用于导出备份;不经序列化,拿到的一定是原先存下的内容) */
+export function getRawSaveString(slot: number = currentSlot.value): string | null {
+  return localStorage.getItem(gameName + '-save' + slot)
+}
+/**清空某槽位的存档(读档失败后玩家选择"跳过"时用;不影响内存中正在运行的存档) */
+export function clearSlot(slot: number = currentSlot.value) {
+  localStorage.removeItem(gameName + '-save' + slot)
+}
+
+/**
+ * 保存存档到本地存储
+ * 存档中存在NaN/非法Decimal时拒绝写入(避免把坏档写下去覆盖好档:原槽位保持上一次的好存档)
+ * @returns 是否成功写入
+ */
+export function localSave(slot: number = currentSlot.value): boolean {
+  lastSaveProblems = findInvalidValues(player)
+  if (lastSaveProblems.length > 0) return false
+  localStorage.setItem(gameName + '-save' + slot, stringify())
+  return true
+}
+/**从本地存储读档,返回结果码(0成功/LOAD_EMPTY该槽位无存档/其余为错误码) */
+export function localLoad(slot: number = currentSlot.value): number {
+  const s = getRawSaveString(slot)
+  if (s == null) return LOAD_EMPTY
+  return load(s)
 }
 /**获取当前存档的字符串(用于导出) */
 export function exportSaveString(): string {

@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
   currentDialog,
   closeDialog,
+  type AlertDialogOptions,
   type ConfirmDialogOptions,
   type QuizDialogOptions,
   type SlotDialogOptions,
@@ -13,8 +14,12 @@ import { format, formatTime } from '@/tools/format'
 
 /**当前是否为确认框 */
 const isConfirm = computed(() => currentDialog.value?.kind == 'confirm')
+/**当前是否为提示框(单按钮) */
+const isAlert = computed(() => currentDialog.value?.kind == 'alert')
 /**当前是否为答题框 */
 const isQuiz = computed(() => currentDialog.value?.kind == 'quiz')
+/**是否必须点按钮才能关闭(确认框与提示框不允许点遮罩/按ESC关闭) */
+const buttonOnly = computed(() => isConfirm.value || isAlert.value)
 /**确认框选项 */
 const confirmOptions = computed<ConfirmDialogOptions | undefined>(() =>
   currentDialog.value?.kind == 'confirm'
@@ -24,6 +29,17 @@ const confirmOptions = computed<ConfirmDialogOptions | undefined>(() =>
 /**确认框文字(支持函数形式,以便随游戏状态实时更新,如重置收益随时间变化) */
 const confirmText = computed(() => {
   const t = confirmOptions.value?.text
+  return typeof t == 'function' ? t() : (t ?? '')
+})
+/**提示框选项 */
+const alertOptions = computed<AlertDialogOptions | undefined>(() =>
+  currentDialog.value?.kind == 'alert'
+    ? (currentDialog.value.options as AlertDialogOptions)
+    : undefined,
+)
+/**提示框文字(同确认框,支持函数形式) */
+const alertText = computed(() => {
+  const t = alertOptions.value?.text
   return typeof t == 'function' ? t() : (t ?? '')
 })
 /**答题框选项 */
@@ -60,17 +76,13 @@ function slotText(s: SlotSummary): string {
 }
 /**按下ESC时取消槽位/答题选择框 */
 function onKeydown(e: KeyboardEvent) {
-  if (e.key == 'Escape' && currentDialog.value?.kind != 'confirm') closeDialog(null)
+  if (e.key == 'Escape' && !buttonOnly.value) closeDialog(null)
 }
 onMounted(() => window.addEventListener('keydown', onKeydown))
 onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 </script>
 <template>
-  <div
-    v-if="currentDialog"
-    class="overlay"
-    @click.self="currentDialog.kind != 'confirm' && closeDialog(null)"
-  >
+  <div v-if="currentDialog" class="overlay" @click.self="!buttonOnly && closeDialog(null)">
     <!-- 确认框 -->
     <div v-if="isConfirm" class="panel">
       <span class="text bold title">{{ confirmOptions?.title }}</span>
@@ -81,6 +93,16 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
         </button>
         <button class="subTab affordable" @click="closeDialog(true)">
           {{ confirmOptions?.confirmText ?? '确认' }}
+        </button>
+      </div>
+    </div>
+    <!-- 提示框(单按钮) -->
+    <div v-else-if="isAlert" class="panel">
+      <span class="text bold title">{{ alertOptions?.title }}</span>
+      <span class="text content">{{ alertText }}</span>
+      <div class="row buttons">
+        <button class="subTab affordable" @click="closeDialog(null)">
+          {{ alertOptions?.confirmText ?? '知道了' }}
         </button>
       </div>
     </div>

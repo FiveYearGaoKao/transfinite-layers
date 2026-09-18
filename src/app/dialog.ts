@@ -13,6 +13,16 @@ export interface ConfirmDialogOptions {
   cancelText?: string
 }
 
+/**提示框选项(只有一个按钮,用于纯告知) */
+export interface AlertDialogOptions {
+  /**标题 */
+  title: string
+  /**说明文字;可为函数以随游戏状态实时更新 */
+  text: string | (() => string)
+  /**按钮文字 */
+  confirmText?: string
+}
+
 /**槽位选择框选项 */
 export interface SlotDialogOptions {
   /**标题 */
@@ -33,8 +43,8 @@ export interface QuizDialogOptions {
 
 /**队列中的对话框条目 */
 interface DialogEntry {
-  kind: 'confirm' | 'slots' | 'quiz'
-  options: ConfirmDialogOptions | SlotDialogOptions | QuizDialogOptions
+  kind: 'confirm' | 'alert' | 'slots' | 'quiz'
+  options: ConfirmDialogOptions | AlertDialogOptions | SlotDialogOptions | QuizDialogOptions
   /**玩家关闭对话框时回传的值:确认框为boolean,槽位框为槽位序号,答题框为输入的答案 */
   resolve: (value: boolean | number | string | null) => void
 }
@@ -48,6 +58,13 @@ export const currentDialog = computed<DialogEntry | undefined>(() => queue[0])
 export function openConfirm(options: ConfirmDialogOptions): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     queue.push({ kind: 'confirm', options, resolve: (v) => resolve(v == true) })
+  })
+}
+
+/**弹出提示框(单按钮,只告知不需要选择),关闭时resolve */
+export function openAlert(options: AlertDialogOptions): Promise<void> {
+  return new Promise<void>((resolve) => {
+    queue.push({ kind: 'alert', options, resolve: () => resolve() })
   })
 }
 
