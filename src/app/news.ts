@@ -2,7 +2,7 @@ import { gameName, gameVersion } from '@/data/constants'
 import { randInt } from '@/tools/utils'
 import { player } from '@/data/player'
 import { format } from '@/tools/format'
-import { getBase, getPoints } from '@/access'
+import { getBase, getHighestActiveLayer, getLayerName, getPoints } from '@/access'
 type newsItem = string | (() => string)
 const NEWS: newsItem[] = [
   //Hello World
@@ -23,6 +23,7 @@ const NEWS: newsItem[] = [
     <span style="color:magenta">紫</span>',
   () => `本游戏一共有${NEWS.length}条新闻,你可以收集一下.`,
   () => `当前时间:${new Date().toLocaleTimeString()}`,
+  () => `今天是${new Date().toLocaleDateString()}`,
   '本游戏的新闻大部分都没有意义.',
   '<span style="font-size:4px">看不见我</span>',
   '我们对新闻的随机数做了修改,你不会连续看到两条相同的新闻.',
@@ -56,6 +57,7 @@ const NEWS: newsItem[] = [
     第一小时有60分钟,此后每一小时的分钟数都是(60+已经过的秒数).倒计时归零时,下一次更新就来了.',
   '不更新.',
   '等到野生狗奶过期也不会更新.',
+  '我的agent额度用完了，需要等5小时才能继续写代码',
   //游戏介绍
   '♥杂鱼作者三年还没有写出一个完整的增量游戏,真是杂鱼呢~♥',
   '本游戏使用了vue.js,这是作者第一个使用vue.js和vite制作的游戏.',
@@ -75,7 +77,7 @@ const NEWS: newsItem[] = [
   '挑战2比挑战1简单难道不是常识吗?',
   //数学
   () => `${format(getPoints([0]))}很大吗?几乎所有的正整数都比它大!`,
-  '"任取一个正整数,几乎所有正整数都比它大"这句话是错误的,因为正整数集上不存在均匀的、满足可数可加性的概率分布.',
+  '"任取一个正整数,几乎所有正整数都比它大"这句话是不准确的,因为正整数集上不存在均匀的、满足可数可加性的概率分布.',
   '如果你每秒写3个数字,那么写完你的点数所用的时间比每秒写2个数字所用的时间要短.',
   '1+1=?',
   //大数梗
@@ -84,7 +86,8 @@ const NEWS: newsItem[] = [
   '切,这才哪到哪(1,1,1,1)(2,1,1,1)(3,1,1,1)(3,1,1,0)(2,0,0,0)【BMS分析极限】\
     =λα.(Σ2-τ【α】+1-ο-Σ2-stb.【α】×(Σ2-τ【α】+1-ο-Σ2-stb.【α】×(Σ2-τ【α】+1-ο-Σ2-stb.【α】×α)))-Π0【0】',
   '你说得对,但是DNAO=(0,0,0)(1,1,1)(2,2,2)(3,3,0)...后面忘了',
-  '此拜谢仅用于保持活跃,不针对任何人或事',
+  '此滚动新闻仅用于保持活跃,不针对任何人或事',
+  '都在滚动新闻里拉💩是吧?全都跑不了',
   //音游梗
   'xxx xx xx xxxxxxx',
   'x x xxx',
@@ -92,6 +95,12 @@ const NEWS: newsItem[] = [
   'Testify',
   '你也许意识到了这件事,"无限"是掩盖未来的虚像...,前方是毁灭亦是重生.',
   '!?感叹号问号问号感叹号?!',
+  //魔塔梗
+  () =>
+    `你解锁了${getLayerName(getHighestActiveLayer() ?? [0])}，这表明你是个勇士，但现在游戏结束了，我将在这里亲手杀死你！\
+  你以为你已经非常强大了吗？嘿嘿错了，只是我今天状态不佳而已。我走了，有本事到下一层和我再打一次。`,
+  '你需要购买iu31才能通过挑战5，当然你也可以不买，超限层级最有趣的地方就是升级有很多用法。',
+  '哦，大王，我打不过这个时间墙，不得不逃，饶了我吧。',
   //RickRoll
   '永远不会放弃你~永远不会辜负你~永远不会跑来跑去~抛弃你~永远不会让你哭~永远不会说再见~永远不会对你说谎~伤害你~',
   '<a href="https://www.bilibili.com/video/BV1GJ411x7h7">这是一个超链接,你应该知道它代表什么.</a>',

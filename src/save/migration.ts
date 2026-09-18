@@ -5,6 +5,7 @@
 import Decimal from 'break_eternity.js'
 import type { Player } from '@/data/player'
 import { versionComp } from '@/tools/utils'
+import { addLog } from '@/data/log'
 
 /**一次迁移，将存档从from版本升级到to版本 */
 export interface Migration {
@@ -18,6 +19,7 @@ export const migrations: Migration[] = []
 export function migrate(save: Player): void {
   for (const m of migrations) {
     if (versionComp(save.version, m.from) >= 0 && versionComp(save.version, m.to) < 0) {
+      addLog('info', `正在进行存档迁移:${save.version}→${m.to}`)
       m.apply(save)
       save.version = m.to
     }

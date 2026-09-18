@@ -214,7 +214,7 @@ function load(s: string): number {
     addLog('error', '导入失败!存档来自未来，加载它可能导致时空错乱![错误代码:301]')
     return 301
   } else if (saveFile.firstPlay > saveFile.lastPlay) {
-    addLog('error', '导入失败!存档时间异常，加载它可能导致时空错乱![错误代码:302]')
+    addLog('error', '导入失败!存档最后游玩时间早于创建时间，加载它可能导致时空错乱![错误代码:302]')
     return 302
   } else if (saveFile.firstPlay < EARLIEST_SAVE_TIME) {
     addLog('error', '导入失败!存档创建时间过早，加载它可能导致时空错乱![错误代码:303]')
@@ -233,8 +233,8 @@ function load(s: string): number {
     //(校验的是补齐后的对象:旧档缺失的字段已由默认值补上,不会误判成"类型错误")
     const problems = findInvalidValues(filled)
     if (problems.length > 0) {
-      addLog('error', `导入失败!存档中存在非法数值![错误代码:251]\n${problems.join('\n')}`)
-      return 251
+      addLog('error', `导入失败!存档中存在非法数值![错误代码:102]\n${problems.join('\n')}`)
+      return 102
     }
     Object.assign(player, filled)
     player.version = gameVersion

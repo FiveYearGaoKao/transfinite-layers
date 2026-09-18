@@ -2,6 +2,14 @@
 //按版本从新到旧排列
 export const CHANGELOG: { version: string; name?: string; notes: string[] }[] = [
   {
+    version: 'v0.1.4',
+    notes: [
+      '增加了存档验证:存档出现NaN或数据类型不正确时会报错',
+      '现在出现坏档时会提醒玩家导出存档',
+      '修复导入旧版存档时不清除新版存档专属内容的bug',
+    ],
+  },
+  {
     version: 'v0.1.3',
     name: '无限里程碑',
     notes: [
