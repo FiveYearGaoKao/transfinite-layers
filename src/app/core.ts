@@ -9,6 +9,7 @@ import { updateAutomations } from '@/logic/automations'
 import { updateMetaAutomations } from '@/logic/metaAutomations'
 import { lockInvalidChallenges } from '@/logic/challenges'
 import { checkLayerInvariants, syncLayerStructure } from '@/logic/layerStructure'
+import { clearFrameCache } from '@/compute/frameCache'
 import { getMetaLayers } from '@/meta/registry'
 import { updateAchievements } from '@/logic/achievements'
 import { addLog } from '@/data/log'
@@ -50,6 +51,8 @@ function reportInvariantErrors() {
 function gameLoop(dt: Decimal) {
   dt = dt.mul(getPsdSpeed())
   addValue('totalTime', dt)
+  //帧首清空帧内缓存(见compute/frameCache):保证本帧读到的软上限阈值/幂次等常量与本帧状态一致
+  clearFrameCache()
   //结构阶段:同步临时层(仅预览层的高度),保证本帧内层级结构稳定
   syncLayerStructure()
   if (temp.debugMode) reportInvariantErrors()

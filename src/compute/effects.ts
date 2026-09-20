@@ -5,6 +5,7 @@ import Decimal, { type DecimalSource } from 'break_eternity.js'
 import type { LayerId } from '@/data/types'
 import { getLayerName, prevLayer } from '@/access'
 import { format } from '@/tools/format'
+import { frameCachedByObject } from './frameCache'
 
 /**加成作用的数值点 */
 export type EffectTarget =
@@ -123,11 +124,24 @@ export function getEffects(target: string): RegisteredEffect[] {
   return registered[target] || []
 }
 
-/**组合一个槽位:初始值上依序应用子目标注册的效果 */
+/**
+ * 组合一个槽位:初始值上依序应用子目标注册的效果
+ * 帧内缓存(见compute/frameCache):同一帧内同一个槽位组合值只算一次。
+ * 依据:这些子值都只随"购买/重置/进出挑战"变化,而这些写操作都会清空缓存;
+ *      一帧内的生产只更新维度数量/点数/能量,不会改变槽位所依赖的已购数
+ * 注:缓存键用**槽位对象本身**而不是slot.target——同一个子目标在不同调用点可以有不同的init基准值
+ *    (如softCap:power的init取调用方给的power),只按target缓存会让两者互相污染。
+ *    因此被缓存的槽位应当是**模块级常量对象**(效果定义里的槽位、compute/softCap里的S_*常量);
+ *    若调用点每次都新建槽位对象,则不会命中缓存(只是变慢,不会算错)——故键改用对象引用的弱表
+ * @param slot 槽位定义(建议为模块级常量,保证同一逻辑槽位是同一对象)
+ * @param ctx 计算上下文
+ */
 export function slotValue(slot: EffectSlot, ctx: EffectContext): Decimal {
-  let value = new Decimal(slot.init(ctx))
-  for (const e of getEffects(slot.target)) value = applyEffect(e, value, ctx)
-  return value
+  return frameCachedByObject(slot, ctx, () => {
+    let value = new Decimal(slot.init(ctx))
+    for (const e of getEffects(slot.target)) value = applyEffect(e, value, ctx)
+    return value
+  })
 }
 
 /**获取某个目标当前生效的效果(统计页只显示生效加成) */

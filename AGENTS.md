@@ -19,8 +19,9 @@ Strict unidirectional dependency: `tools → data → save/access → compute �
 - **`compute/` is read-only**: functions take state as input, return results, never mutate.
 - **`logic/` is where mutations happen** (purchases, resets, automations).
 - **`effects.ts` is the central buff pipeline**: every numeric modifier (cost, production, reset gain, etc.) goes through `registerEffect`/`calculate`. New systems MUST register effects here, never bake bonuses into core formulas.
+- **Frame cache contract** (`compute/frameCache.ts`): soft-cap threshold/power and every `slotValue` result are cached within one frame. Any write that changes them must call `clearFrameCache()` right after (see `docs/面向开发者/性能.md`). Violating it only yields stale values within the frame, but they will be wrong.
 
-Full architecture & effect mechanism docs: `docs/面向开发者/` (架构.md, 层级系统.md, effect机制.md, 存档.md, 开发规范.md). Player-facing guide: `docs/面向玩家/玩法指南.md`.
+Full architecture & effect mechanism docs: `docs/面向开发者/` (架构.md, 层级系统.md, effect机制.md, 存档.md, 开发规范.md, 性能.md). Player-facing guide: `docs/面向玩家/玩法指南.md`.
 
 ### Layers (read `docs/面向开发者/层级系统.md` first)
 - Coordinates (`LayerId`) are **slots only**, written in **canonical form**: no leading zero digits (all-zero = `[0]`), so coordinates do not depend on `player.layerDepth`. Build and look up keys with `layerKey()` (`tools/ordinal.ts`) — never hand-write `pos.toString()`, and never use a zero-padded coordinate like `[0,5]`. A layer's height lives in `Layer.level`. Layer relations go through `access/layerGraph.ts` (`prevLayer` / `levelGap` / `getOrderedLayers`) and `tools/ordinal.ts` (`nextLayer`): the **o-order bonus source of layer L is `nextLayer(L, o)`**. Never hand-roll coordinate arithmetic in other modules.

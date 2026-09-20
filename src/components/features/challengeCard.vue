@@ -46,9 +46,13 @@ function progressPercent(): number {
   return Math.max(0, Math.min(100, ratio.mul(100).toNumber()))
 }
 
-/**本次点击完成按钮预计完成的次数(至少1;解锁无限里程碑im3后可一次完成多次) */
+/**
+ * 本次点击完成按钮预计完成的次数
+ * maxBatchCompletions 返回的就是"本次能增加的次数",与 exitChallenge 的结算量同源,故直接用;
+ * 按钮只在"已达成目标"时显示,此时它至少为1(允许批量时可能远大于1)
+ */
 function batchCount(): Decimal {
-  return maxBatchCompletions(props.def).sub(completions(props.def)).max(1)
+  return maxBatchCompletions(props.def)
 }
 
 /**完成按钮文字:不允许批量时逐次完成 */

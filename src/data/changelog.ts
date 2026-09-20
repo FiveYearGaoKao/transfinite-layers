@@ -8,6 +8,7 @@ export const CHANGELOG: { version: string; name?: string; notes: string[] }[] = 
       '添加了5个无限挑战，进入或退出无限挑战将强制执行无限重置，根据退出无限挑战时的层级0点数获得奖励',
       '调整了部分无限升级的效果',
       '添加了8个成就',
+      '对自动购买的性能进行了优化',
     ],
   },
   {

@@ -28,6 +28,7 @@ import type { LayerId } from '@/data/types'
 import { compareLayer } from '@/tools/ordinal'
 import { hasInfinityUpgrade } from '@/compute/infinity'
 import { addKnowledge } from '@/compute/knowledge'
+import { clearFrameCache } from '@/compute/frameCache'
 
 /**成就定义 */
 export interface AchievementDef {
@@ -556,6 +557,8 @@ function unlockAchievement(def: AchievementDef) {
   player.achievements.push(def.id)
   addKnowledge(new Decimal(def.reward))
   addLog('progress', `已解锁成就：${def.name}`)
+  //成就可能带来数值效果(见下方achievementEffect):帧内缓存失效
+  clearFrameCache()
 }
 
 /**按id直接解锁一个成就(触发型隐藏成就用;发放知识奖励并写日志) */

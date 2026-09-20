@@ -31,6 +31,7 @@ import { softCapValue } from '@/tools/softCap'
 import { format } from '@/tools/format'
 import { hasInfinityMilestone } from '@/compute/infinityMilestones'
 import { hasInfinityUpgrade } from '@/compute/infinity'
+import { clearFrameCache } from '@/compute/frameCache'
 import { doReset } from './reset'
 import { doInfinityReset } from './infinity'
 import { addLog } from '@/data/log'
@@ -242,6 +243,8 @@ export function lockInvalidChallenges() {
     player.activeChallenges = player.activeChallenges.filter((id) => id != def.id)
     addLog('info', `挑战上锁：${def.name}`)
   }
+  //激活挑战影响软上限阈值/幂次等帧内缓存值:统一失效
+  clearFrameCache()
 }
 
 /**
@@ -259,11 +262,14 @@ export function enterChallenge(def: ChallengeDef) {
   player.activeChallenges.push(def.id)
   challengeReset(def)
   addLog('info', `进入挑战：${def.name}`)
+  //激活挑战影响软上限阈值/幂次等帧内缓存值
+  clearFrameCache()
 }
 
 /**
  * 退出挑战(完成或放弃):先结算完成次数,再移除激活标记并强制重置
- * 结算规则:未达到目标则不增加次数;达到目标时,允许批量的挑战一次结算尽可能多的次数,否则+1
+ * 结算规则:未达到目标则不增加次数;达到目标时一次结算 maxBatchCompletions 次
+ * (允许批量的挑战尽量多结算,否则只+1;两种情况都由 maxBatchCompletions 给出)
  * 强制生效中(如IC1中的C1/C2)的挑战既不能退出也不能结算,直接忽略
  * @param def 要退出的挑战
  */
@@ -275,29 +281,37 @@ export function exitChallenge(def: ChallengeDef) {
   player.activeChallenges = player.activeChallenges.filter((id) => id != def.id)
   const done = challengeDone(def)
   if (done) {
-    const now = completions(def)
-    //allowBatch时尽可能多结算:goal(j)<=resource 说明"第j+1次"也已完成,故可完成到 j+1 次
-    const target = allowBatch(def) ? maxCompletions(def, challengeResource(def)).add(1) : now.add(1)
-    if (target.gt(now)) player.challenges[def.id] = target
+    //结算量只由 maxBatchCompletions 决定,与"完成"按钮上显示的数字同源
+    const gained = maxBatchCompletions(def)
+    if (gained.gt(0)) player.challenges[def.id] = completions(def).add(gained)
   }
   challengeReset(def)
   addLog('info', done ? `完成挑战：${def.name}` : `退出挑战：${def.name}`)
+  //退出挑战会改变完成次数与激活列表,两者都影响软上限阈值/幂次的帧内缓存值
+  clearFrameCache()
 }
 
 /**
- * 批量完成辅助:给定目标资源量,求最大的 j 使 goal(j) <= resource
- * 注意:goal(j)是"第j+1次完成"所需的资源量,故可完成到 j+1 次(见 exitChallenge)
- * 目标公式 goal(k) 单调递增,由 maxSatisfying 在高度域二分求解(至多约129次目标求值)
+ * 批量完成辅助:给定目标资源量,求"还能额外完成几次"
+ * maxSatisfying 以当前完成次数为原点、返回相对增量(见tools/bisect的origin说明);
+ * 需要"完成后总共是第几次"时用 `completions(def).add(maxCompletions(...))`
+ * @param resource 目标资源量(通常传入 challengeResource(def))
  */
 export function maxCompletions(def: ChallengeDef, resource: Decimal): Decimal {
   return maxSatisfying((k) => def.goal(k), resource, completions(def))
 }
 
-/**当前资源下最多能完成到的完成次数(含本次;未达成当前目标时等于当前次数) */
+/**
+ * 本次完成能增加的完成次数
+ * - 未达到当前目标:0(不能完成)
+ * - 允许批量的挑战:尽量多结算(受 im3 解锁影响,见 allowBatch)
+ * - 否则:1(逐次完成)
+ * 这是"结算"与"UI显示"的唯一来源(见 exitChallenge 与 challengeCard.vue)
+ */
 export function maxBatchCompletions(def: ChallengeDef): Decimal {
-  const now = completions(def)
-  if (!challengeDone(def)) return now
-  return maxCompletions(def, challengeResource(def)).add(1)
+  if (!challengeDone(def)) return new Decimal(0)
+  if (!allowBatch(def)) return new Decimal(1)
+  return maxCompletions(def, challengeResource(def))
 }
 
 //------效果注册------
@@ -623,7 +637,7 @@ const CHALLENGES: ChallengeDef[] = [
         target: 'iu33:base',
         type: 'add',
         //数值待测试
-        value: () => new Decimal(0.05).mul(challengeCompletions('ic5').add(1).sqrt()),
+        value: () => new Decimal(0.1).mul(challengeCompletions('ic5').sqrt()),
         text: '无限维度效果指数 +{value}',
       },
     ],

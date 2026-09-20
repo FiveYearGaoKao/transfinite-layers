@@ -20,6 +20,7 @@ import { hasLayerContent } from '@/compute/layerContent'
 import { addLog } from '@/data/log'
 import { checkResetAchievements } from './achievements'
 import { unlockNextLayer, wipeLayerScope } from './layerStructure'
+import { clearFrameCache } from '@/compute/frameCache'
 
 /**重置选项 */
 interface ResetOptions {
@@ -42,6 +43,13 @@ function upgradeProtectedByInfinity(id: number): boolean {
 
 /**重置一个层级的数据(清除维度/升级/可购买等) */
 export function resetData(layer: LayerId, opts: ResetOptions = {}) {
+  resetDataInner(layer, opts)
+  //清空维度和可购买会改变加成:帧内缓存失效
+  clearFrameCache()
+}
+
+/**resetData的实现体 */
+function resetDataInner(layer: LayerId, opts: ResetOptions) {
   const L = getLayer(layer)
   if (L) {
     const keepUpgrades = opts.keepUpgrades ?? false
@@ -83,6 +91,18 @@ export function doReset(
   layer: LayerId,
   forced: boolean = false,
   forceClearUpgrades: boolean = false,
+): LayerId | undefined {
+  const newPos = doResetInner(layer, forced, forceClearUpgrades)
+  //只要走到这里就可能改过点数/维度/可购买(无论是否解锁出新层级):帧内缓存失效(见compute/frameCache)
+  clearFrameCache()
+  return newPos
+}
+
+/**doReset的实现体:把"写状态"与"缓存失效"分开,保证任何提前返回也统一失效 */
+function doResetInner(
+  layer: LayerId,
+  forced: boolean,
+  forceClearUpgrades: boolean,
 ): LayerId | undefined {
   if (!forced && !canReset(layer)) return undefined
   if (isLayer0(layer)) return undefined

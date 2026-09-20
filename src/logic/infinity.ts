@@ -21,6 +21,7 @@ import {
 import { getChallenge } from './challenges'
 import { resetAutomationsForInfinityReset } from './automations'
 import { recreateLayer0, wipeLayersWhere } from './layerStructure'
+import { clearFrameCache } from '@/compute/frameCache'
 
 /**
  * 进行无限重置:获得无限点数,删除层级0以外的所有0阶层级(层级0重建为1点数的全新初始状态),
@@ -29,6 +30,13 @@ import { recreateLayer0, wipeLayersWhere } from './layerStructure'
  * @param forced 是否强制重置(不获得资源)
  */
 export function doInfinityReset(forced: boolean = false) {
+  doInfinityResetInner(forced)
+  //无限重置会重建层级0并清空自动化配置:帧内缓存必须失效(见compute/frameCache)
+  clearFrameCache()
+}
+
+/**doInfinityReset的实现体:把"写状态"与"缓存失效"分开,保证提前返回也统一失效 */
+function doInfinityResetInner(forced: boolean): void {
   if (!(forced || canInfinityReset())) return
   if (!forced) {
     //先算收益:IP经加成管道后向下取整

@@ -126,6 +126,22 @@ for (const u of UPGRADES) {
 挑战 c1/c2 用它禁用 b11/b12(`buyable-11`/`buyable-12`)。
 `effectValue`/`applyEffect`/`activeEffects` 均跳过被禁用效果(统计页也不显示)。
 
+> 禁用器目前只在**挑战进出**时才会改变判定结果,因此 `enterChallenge`/`exitChallenge`/`lockInvalidChallenges`
+> 都会调用 `clearFrameCache()`。若将来出现"每帧内会自己变化的禁用条件",必须一并处理(见 [性能.md](./性能.md) 的缓存契约)。
+
+### 槽位组合的帧内缓存
+
+`slotValue(slot, ctx)` 的结果按 **槽位对象引用 + 层级 + id** 做帧内缓存(见 `compute/frameCache`)。
+原因:自动化一次"买最大"会对同一物品做几十次价格求值,而其中大部分槽位值(如 `b11:amount`、`b12:quad`)
+与"将要购买的数量"无关;生产链路里同一层级的 `dimensionMult` 也会被多个维度反复求解。
+
+**约定**:被缓存的槽位应当是**模块级常量对象**(效果定义里的槽位、`compute/softCap.ts` 里的 `SLOT_*` 常量)。
+不要只按 `slot.target` 作键——同一个子目标在不同调用点可以有不同的 `init` 基准值
+(`softCap:power` 的价格基准 2 与维度生产基准 0.75 就是这样),按 target 作键会让两者互相污染。
+调用点每次新建槽位对象只会导致缓存不命中(变慢,不会算错)。
+
+缓存的值在**本帧内不变化**这一前提由"写状态后清空缓存"保证,详见 [性能.md](./性能.md)。
+
 ### 无限挑战与"强制视为进入"
 
 无限挑战(`ChallengeDef.layer == 'infinity'`,购买无限升级 iu15 解锁)与普通挑战**共用注册表、完成次数表

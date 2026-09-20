@@ -146,7 +146,7 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     id: 'iu25',
     name: '元维度提升',
     description: '解锁元维度提升',
-    cost: 1e10,
+    cost: 1e308,
   },
   {
     id: 'iu31',
@@ -198,7 +198,7 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     id: 'iu35',
     name: '元星系',
     description: '解锁元星系',
-    cost: 1e20,
+    cost: 1e308,
   },
   {
     id: 'iu41',
@@ -246,7 +246,7 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     id: 'iu45',
     name: '元声望升级',
     description: '解锁元声望升级',
-    cost: 1e50,
+    cost: 1e308,
     //TODO: 元声望升级机制待实现
   },
   {

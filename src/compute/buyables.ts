@@ -4,7 +4,8 @@ import type { LayerId } from '@/data/types'
 import { c4BoughtOffset, getBase, getLayer, hasAchievement } from '@/access'
 import { hasInfinityUpgrade } from './infinity'
 import { initializeDimensions } from '@/data/types'
-import { softCap } from './softCap'
+import { softCap, softCapInverse, SOFT_CAP_HEIGHT } from './softCap'
+import { lastTermBudget } from '@/tools/geometricSum'
 import {
   effectText,
   registerEffect,
@@ -137,6 +138,70 @@ export function buyableCostAt(layer: LayerId, id: number, n: Decimal): Decimal {
 /**获取某可购买的成本 */
 export function buyableCost(layer: LayerId, id: number): Decimal {
   return buyableCostAt(layer, id, buyableAmount(layer, id))
+}
+
+/**估算时给"总成本→末项"的折算留的余量(>1):宁可略大,偏大只多迭代几次 */
+const ESTIMATE_SAFETY = new Decimal(1.1)
+
+/**
+ * 可购买"在预算内最多能再买多少个"的闭式估算(供maxBuyable做搜索锚点)
+ * 依据(各可购买的价格公式见上方BUYABLES定义,变更公式时必须同步检查本函数):
+ *   b11: base^(n/2+1)         → 公比 base^(1/2),对数对n线性
+ *   b12: 10^(n(1+q·n)+c)      → log10(价格)是n的二次式,用求根公式反解(取正根)
+ *   b13: base^(2^n·K),K=costMult·base → 双重指数,末项主导,由末项预算直接取对数
+ * 之后再套软上限的逆(compute/softCap的softCapInverse,对任意p>0成立)
+ * 返回值与sumCost的第2参数同口径(即"还能再买几个"),可直接作为maxSatisfying的锚点
+ * 注:估算偏差不会算错,只会让maxSatisfying多迭代几次
+ * @param budget 总预算
+ * @returns 可购买数量的估算;买不起/公式不适用时返回undefined(退回通用搜索)
+ */
+export function buyableSumEstimate(
+  layer: LayerId,
+  id: number,
+  budget: Decimal,
+): Decimal | undefined {
+  if (!budget.gt(0)) return new Decimal(0)
+  const base = new Decimal(getBase())
+  if (!base.gt(1)) return undefined
+  const def = getBuyable(id)
+  if (!def) return undefined
+  const target = lastTermBudget(budget, base, ESTIMATE_SAFETY)
+  if (!target.gt(0)) return undefined
+  let nk: Decimal
+  if (id == 11) {
+    //base^(n/2+1) <= target → n <= 2·(log_base(target) - 1)
+    nk = target.log(base).sub(1).mul(2)
+  } else if (id == 12) {
+    //10^(n(1+q·n)+c) <= target → q·n² + n + (c - log10(target)) <= 0,取正根
+    const quad = slotValue({ target: 'b12:quad', init: () => 0.1 }, { pos: layer, id: 0 })
+    const costBase = slotValue({ target: 'b12:costBase', init: () => 2 }, { pos: layer, id: 0 })
+    if (!quad.gt(0)) return undefined
+    const disc = new Decimal(1).add(quad.mul(4).mul(costBase.sub(target.log10())))
+    if (!disc.gte(0)) return new Decimal(0)
+    nk = disc.sqrt().sub(1).div(quad.mul(2))
+  } else if (id == 13) {
+    //base^(2^n·K) <= target → 2^n <= log_base(target)/K → n <= log2(...)
+    const costMult = slotValue({ target: 'b13:costMult', init: () => 4 }, { pos: layer, id: 0 })
+    const K = costMult.mul(base)
+    if (!K.gt(0)) return undefined
+    const exp = target.log(base).div(K)
+    if (!exp.gt(1)) return new Decimal(0)
+    nk = exp.log(2)
+  } else {
+    return undefined
+  }
+  //套软上限的逆(见compute/softCap的softCapInverse);未声明softCap的可购买不处理
+  if (def.softCap) {
+    const uncapped = softCapInverse(nk, def.softCap.power, SOFT_CAP_HEIGHT)
+    //幂次非正时不可逆:不估算,退回通用搜索
+    if (!uncapped) return undefined
+    nk = uncapped
+  }
+  if (!nk.isFinite() || nk.isNan() || !nk.gt(0)) return new Decimal(0)
+  const owned = buyableAmount(layer, id)
+  const canBuy = nk.floor().sub(owned).add(1)
+  //估算落在已购数之下时返回0(合法估算):不可返回负数,否则整条锚定路径会被判为非法而退化
+  return canBuy.gt(0) ? canBuy : new Decimal(0)
 }
 /**判断是否能购买某可购买 */
 export function canBuyBuyable(layer: LayerId, id: number): boolean {

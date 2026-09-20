@@ -3,16 +3,18 @@ import Decimal, { type DecimalSource } from 'break_eternity.js'
 import type { LayerId } from '@/data/types'
 import { addAmount, dimensionAmount, getLayer } from '@/access'
 import { player } from '@/data/player'
-import { dimensionCost, dimensionCostAt } from '@/compute/dimensions'
+import { dimensionCost, dimensionCostAt, dimensionSumEstimate } from '@/compute/dimensions'
 import {
   buyableAmount,
   buyableCostAt,
+  buyableSumEstimate,
   getBuyable,
   getBuyables,
   isUnlocked,
 } from '@/compute/buyables'
 import { canBuyUpgrade, upgradeCost } from '@/compute/upgrades'
 import { type BuyableItem, maxBuyable, sumCost } from '@/compute/buying'
+import { clearFrameCache } from '@/compute/frameCache'
 import { getLayerOrder } from '@/tools/ordinal'
 
 /**维度作为可购买项 */
@@ -20,6 +22,7 @@ function dimItem(layer: LayerId, id: number): BuyableItem {
   return {
     amount: () => dimensionAmount(layer, id, 1),
     cost: (n) => dimensionCostAt(layer, id, n),
+    sumEstimate: (budget) => dimensionSumEstimate(layer, id, budget),
   }
 }
 /**可购买作为可购买项 */
@@ -27,6 +30,7 @@ function buyableItem(layer: LayerId, id: number): BuyableItem {
   return {
     amount: () => buyableAmount(layer, id),
     cost: (n) => buyableCostAt(layer, id, n),
+    sumEstimate: (budget) => buyableSumEstimate(layer, id, budget),
   }
 }
 
@@ -55,6 +59,8 @@ function buyItem(
   const cost = sumCost(item, n)
   if (cost.gt(L.points)) return null
   L.points = L.points.sub(cost)
+  //购买改变了玩家状态:帧内缓存必须立刻失效,否则同一帧后续的价格/产量会读到购买前的值
+  clearFrameCache()
   return { n, cost }
 }
 
@@ -106,6 +112,8 @@ export function buyUpgrade(layer: LayerId, id: number) {
     L.upgrades.push(id)
     //首次购买自动化1(u4)后永久解锁自动化标签页
     if (id == 4) player.automationUnlocked = true
+    //升级被购买会改变加成(如u2/u3/u1),帧内缓存随之失效
+    clearFrameCache()
   }
 }
 
