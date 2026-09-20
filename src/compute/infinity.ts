@@ -60,12 +60,12 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
   {
     id: 'iu12',
     name: '点数作用强化',
-    description: '本列每购买1个无限升级,点数作用(升级u1)的效果指数+1',
+    description: '本列每购买1个无限升级,点数作用(升级u1)的效果指数+0.5',
     cost: 2,
     effect: {
       target: 'u1:base',
       type: 'add',
-      value: () => infinityUpgradeCountInColumn(2),
+      value: () => infinityUpgradeCountInColumn(2).mul(0.5),
       text: '点数作用指数 +{value}',
     },
   },

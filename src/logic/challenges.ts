@@ -65,7 +65,7 @@ export interface ChallengeDef {
   /**目标资源类型 */
   goalType?: ChallengeGoalType
   /**
-   * 完成目标:给定当前完成次数k(从0开始),返回所需目标资源量
+   * 完成目标:给定当前完成次数k(从0开始),返回下一次完成所需目标资源量
    * 公式应单调递增且方便求逆(供批量完成机制使用)
    */
   goal(k: Decimal): Decimal
@@ -295,10 +295,11 @@ export function exitChallenge(def: ChallengeDef) {
  * 批量完成辅助:给定目标资源量,求"还能额外完成几次"
  * maxSatisfying 以当前完成次数为原点、返回相对增量(见tools/bisect的origin说明);
  * 需要"完成后总共是第几次"时用 `completions(def).add(maxCompletions(...))`
+ * 由于goal(k)表示第k+1次完成需要的目标量，因此最后要+1
  * @param resource 目标资源量(通常传入 challengeResource(def))
  */
 export function maxCompletions(def: ChallengeDef, resource: Decimal): Decimal {
-  return maxSatisfying((k) => def.goal(k), resource, completions(def))
+  return maxSatisfying(def.goal, resource, completions(def)).add(1)
 }
 
 /**
