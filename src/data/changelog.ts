@@ -2,6 +2,15 @@
 //按版本从新到旧排列
 export const CHANGELOG: { version: string; name?: string; notes: string[] }[] = [
   {
+    version: 'v0.1.5',
+    name: '无限挑战',
+    notes: [
+      '添加了5个无限挑战，进入或退出无限挑战将强制执行无限重置，根据退出无限挑战时的层级0点数获得奖励',
+      '调整了部分无限升级的效果',
+      '添加了8个成就',
+    ],
+  },
+  {
     version: 'v0.1.4',
     notes: [
       '增加了存档验证:存档出现NaN或数据类型不正确时会报错',
