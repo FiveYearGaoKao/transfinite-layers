@@ -4,22 +4,27 @@ import type { LayerId } from '@/data/types'
 import { c4BoughtOffset, dimensionAmount, getBase } from '@/access'
 import { getLayerOrder, isLayer0 } from '@/tools/ordinal'
 import { softCapValue } from '@/tools/softCap'
-import { calculate, registerEffect } from './effects'
+import { calculate, registerEffect, slotValue } from './effects'
 import { softCap } from './softCap'
 import './energy'
 
 /**维度生产软上限:阈值与强度(产量超过阈值后增长变缓) */
 export const DIM_CAP_THRESHOLD = Number.MAX_VALUE
-export const DIM_CAP_POWER = 0.8
+export const DIM_CAP_POWER = 0.75
 
-//维度产量软上限注册为production目标上的custom效果(custom优先级最高,天然在其它点数获取加成之后生效)
+//维度生产软上限注册为production目标上的custom效果(custom优先级最高,天然在其它点数获取加成之后生效)
+//幂次取自softCap:power槽位(与价格软上限共用):ic4把该槽位平方(0.75→0.75²)、iu52削弱它,两处软上限因此同步变化
 registerEffect({
   id: 'dimension-softcap',
   name: '维度生产软上限',
   target: 'production',
   type: 'custom',
-  value: (_ctx, _base, _amount, current) =>
-    softCapValue(current ?? new Decimal(1), new Decimal(DIM_CAP_THRESHOLD), DIM_CAP_POWER, 1),
+  value: (ctx, _base, _amount, current) =>
+    softCapValue(
+      current ?? new Decimal(1),
+      slotValue({ target: 'dimSoftCap:base', init: () => DIM_CAP_THRESHOLD }, ctx),
+      slotValue({ target: 'softCap:power', init: () => DIM_CAP_POWER }, ctx),
+    ),
   //isActive: (ctx) => isLayer0(ctx.pos) && ctx.id == 0,
   text: '软上限 x{value}',
 })

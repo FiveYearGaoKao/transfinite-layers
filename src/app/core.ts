@@ -18,7 +18,7 @@ import { getPsdSpeed, hasKnowledge } from '@/compute/knowledge'
 import { OFFLINE_THRESHOLD } from '@/data/constants'
 import { openConfirm } from '@/app/dialog'
 
-const FPS: number = 100
+const FPS: number = 60
 let saveTimer = 0
 /**自动保存循环，每秒检测一次 */
 export function autoSaveLoop() {

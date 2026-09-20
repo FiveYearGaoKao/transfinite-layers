@@ -32,10 +32,14 @@
 
 除主数值点外,还有**子目标(槽位)**用于修饰公式参数:
 `energy:base`(能量指数)、`u1:base`(点数作用指数)、`b11:base`/`b11:amount`(加速器底数/等级)、
-`b12:quad`/`b12:base`/`b12:amount`(加倍器)、`softCap:base`(软上限阈值)、`softCap:power`(软上限对数幂次,默认2,iu52 削弱为 power^(0.99^挑战总数))、
+`b12:quad`/`b12:base`/`b12:amount`(加倍器)、`softCap:base`(软上限阈值)、`softCap:power`(软上限强度,默认2,iu52 削弱为 power^(0.99^普通挑战总数))、
 `b12:costBase`(加倍器基础价格指数,默认2,iu22 降为0)、`b13:costMult`(加速器加成价格指数,默认4,iu42 降为3)、
 `a41:decay`(成就"逆流而上"的衰减速度,默认1,iu21 降为0.1)、
 `iu33:base`(无限升级IU33的维度乘数指数,默认0.3,iu43 提升)。
+
+> `softCap:power` 是**价格软上限与维度生产软上限共用的强度槽位**:`compute/softCap` 的价格软上限与
+> `compute/dimensions` 的维度生产软上限(`dimension-softcap`,初始值 0.75)都通过它读取幂次,
+> 因此 iu52(削弱)与无限挑战 IC4(平方)会同时作用于两处软上限。无任何修饰时槽位值即各自初始值,普通玩法数值不受影响。
 
 ### 效果(Effect)
 
@@ -112,6 +116,7 @@ for (const u of UPGRADES) {
 | 成就          | `achievement-{id}`                           | 已解锁                                                  |
 | 知识升级      | `knowledge-{id}`                             | 已购买至少1次                                           |
 | 挑战惩罚/奖励 | `challenge-{id}-penalty-{n}` / `-reward-{n}` | 激活中 / 完成次数>0                                     |
+| 无限挑战      | 同上(`challenge-ic{n}-…`)                    | 同上(无限挑战也是挑战,共用同一套注册与结算)             |
 | 无限升级      | `iu-{id}`                                    | 已购买(可叠加自定义条件,如 iu32 仅挑战中、iu51 仅层级0) |
 | 无限里程碑    | `im-{id}`                                    | 已解锁(无限重置次数达到该里程碑阈值)                    |
 
@@ -120,6 +125,21 @@ for (const u of UPGRADES) {
 `registerEffectDisabler(effectId, fn)` 注册禁用器:fn 返回 true 时该效果被跳过。
 挑战 c1/c2 用它禁用 b11/b12(`buyable-11`/`buyable-12`)。
 `effectValue`/`applyEffect`/`activeEffects` 均跳过被禁用效果(统计页也不显示)。
+
+### 无限挑战与"强制视为进入"
+
+无限挑战(`ChallengeDef.layer == 'infinity'`,购买无限升级 iu15 解锁)与普通挑战**共用注册表、完成次数表
+(`player.challenges`)、激活列表(`player.activeChallenges`)、入口函数(`enterChallenge`/`exitChallenge`)
+与卡片组件**,差别只有三点:解锁条件、进出时强制无限重置(不获得资源)、目标资源恒为层级0点数。
+
+其中"强制视为进入"是**零额外效果注册**的关键:例如 IC1 要让 C1+C2 的惩罚始终生效,
+只需在 `access/challengeState.ts` 的 `FORCED_ACTIVE` 里声明 `ic1: ['c1', 'c2']`,
+`isChallengeActive` 便会在这两个 id 上恒返回 true,于是 C1 的加速器禁用、C2 的加倍器禁用与点数减半
+自动生效,无需再注册一份惩罚效果。IC2 同理强制 C3+C4(仅额外注册一条 `b11:base` 惩罚)。
+
+- `FORCED_ACTIVE` 登记在 `access` 层(被 `access`/`compute`/`logic` 共同读取,放 `logic` 会造成循环依赖);
+- `logic/challenges.ts` 注册完挑战后有一条**仅开发构建执行**的交叉校验,防止该表与注册表失配;
+- 被强制激活的挑战不可进入/退出/完成:卡片只显示"强制生效中",`exitChallenge` 内也有 `isForcedActive` 守卫。
 
 ## 七、新增系统的正确姿势
 

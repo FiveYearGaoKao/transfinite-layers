@@ -19,7 +19,7 @@ export function softCapValue(
 ): Decimal {
   if (height < 0) height = 0
   //软上限的最小阈值(小于此阈值对数没有意义)
-  threshold = threshold.max(new Decimal(1e-15).layeradd10(height))
+  threshold = threshold.max(new Decimal(1).layeradd10(height))
   //低于阈值原样返回
   if (value.lte(threshold)) return value
   //先分别取height次对数

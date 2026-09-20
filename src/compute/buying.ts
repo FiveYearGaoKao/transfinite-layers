@@ -11,20 +11,25 @@ export interface BuyableItem {
   cost(n: Decimal): Decimal
 }
 
-/**总成本近似时参与求和的末项数(超指数增长下前项可忽略) */
+/**至多求和的项数 */
 const SUM_TERMS = 3
 
-/**购买k个的总成本(取最后几项近似，k较小时精确) */
+/**允许的相对误差 */
+const SUMCOST_EPS = 1e-2
+
+/**购买k个的总成本(从后往前求和，k较小时精确) */
 export function sumCost(item: BuyableItem, k: Decimal): Decimal {
   if (k.lte(0)) return new Decimal(0)
   const n0 = item.amount()
-  let start = k.sub(SUM_TERMS)
-  if (start.lt(0)) start = new Decimal(0)
+  const nk = n0.add(k).sub(1)
   let total = new Decimal(0)
-  let i = start
-  while (i.lt(k)) {
-    total = total.add(item.cost(n0.add(i)))
+  let i = new Decimal(0)
+  while (i.lt(SUM_TERMS) && i.lt(k)) {
+    const last = item.cost(nk.sub(i))
+    total = total.add(last)
     i = i.add(1)
+    //如果最后一项占当前总价格的比例小于固定值，就直接跳过
+    if (last.lte(total.mul(SUMCOST_EPS))) break
   }
   return total
 }

@@ -4,7 +4,15 @@
 //- 临时层(-1)只是预览,不参与生产;层级遍历一律经access的顺序API(forEachLayer),不依赖对象键序
 import Decimal from 'break_eternity.js'
 import { player } from '@/data/player'
-import { addAmount, forEachLayer, getLayer, levelGap, prevLayer, type LayerEntry } from '@/access'
+import {
+  addAmount,
+  forEachLayer,
+  getLayer,
+  isChallengeActive,
+  levelGap,
+  prevLayer,
+  type LayerEntry,
+} from '@/access'
 import { isLayer0 } from '@/tools/ordinal'
 import { productionPerSecond } from '@/compute/dimensions'
 import { hasUpgrade } from '@/compute/upgrades'
@@ -15,7 +23,8 @@ import { applyChallengeEffects } from './challenges'
 function updateLayer(e: LayerEntry, dt: Decimal) {
   const layer = e.L
   if (!layer.active) return
-  const l = layer.dimensions.length
+  //挑战IC3"维度折叠":每个层级只有维度1和维度2能生产资源(更高维度仍可购买,但不再产出)
+  const l = isChallengeActive('ic3') ? 2 : layer.dimensions.length
   //从上到下更新每一维度
   for (let i = l - 2; i >= 0; --i) {
     const produced = productionPerSecond(e.pos, i + 1).mul(dt)

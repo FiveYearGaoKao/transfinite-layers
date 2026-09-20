@@ -70,7 +70,9 @@ export function formatTime(x: DecimalSource): string {
         (xn >= 60 ? minutes + '分' : '') +
         (seconds.toFixed(3) + '秒')
       )
-    } else if (xn > 1e-3) return (xn * 1000).toFixed(0) + '毫秒'
-    else return '<1毫秒'
+    } else if (xn > 1e-3) return (xn * 1000).toPrecision(3) + '毫秒'
+    else if (xn > 1e-6) return (xn * 1e6).toPrecision(3) + '微秒'
+    else if (xn > 1e-9) return (xn * 1e9).toPrecision(3) + '纳秒'
+    else return format(x) + '秒'
   }
 }

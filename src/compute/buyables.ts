@@ -4,7 +4,6 @@ import type { LayerId } from '@/data/types'
 import { c4BoughtOffset, getBase, getLayer, hasAchievement } from '@/access'
 import { hasInfinityUpgrade } from './infinity'
 import { initializeDimensions } from '@/data/types'
-import { format } from '@/tools/format'
 import { softCap } from './softCap'
 import {
   effectText,
@@ -77,7 +76,7 @@ export const BUYABLES: BuyableDef[] = [
   {
     id: 13,
     name: '加速器加成',
-    description: '使加速器的效果+2%，效果叠加',
+    description: '使加速器的效果+{base}，效果叠加',
     order: 0,
     isUnlocked: (_layer: LayerId) => hasAchievement('a22'),
     cost(_layer: LayerId, n: Decimal): Decimal {
@@ -88,10 +87,9 @@ export const BUYABLES: BuyableDef[] = [
     effect: {
       target: 'b11:base',
       type: 'add',
-      value: (ctx) => buyableAmount(ctx.pos, 13).mul(0.02),
-    },
-    effectText(layer: LayerId, n: Decimal): string {
-      return `加速器效果 +${format(new Decimal(2).mul(n))}%`
+      base: { target: 'b13:base', init: () => 0.02 },
+      amount: { target: 'b13:amount', init: (ctx) => buyableAmount(ctx.pos, 13) },
+      text: '加速器效果 +{value}',
     },
     onBuy(layer: LayerId) {
       //无限升级iu41:购买加速器加成不重置任何东西

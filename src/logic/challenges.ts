@@ -3,19 +3,25 @@
 //完成次数存入player.challenges,奖励效果按完成次数始终生效
 //对层级的引用一律是"绝对高度引用"(见 docs/面向开发者/层级系统.md):
 //解锁与目标层都按高度解析(精确匹配,否则上取整),因此不随窗口平移与删层而错位
+//无限挑战(layer=='infinity')复用同一套注册表/完成次数表/激活列表/入口函数,差别只有三点:
+//  解锁条件为无限升级iu15、进入/退出时强制无限重置(不获得资源)、目标资源恒为层级0点数
 import Decimal from 'break_eternity.js'
 import { player } from '@/data/player'
 import type { Layer, LayerId } from '@/data/types'
 import type { EffectDef, RegisteredEffect } from '@/compute/effects'
 import { effectById, effectText, registerEffect, registerEffectDisabler } from '@/compute/effects'
 import {
+  FORCED_ACTIVE,
   challengeCompletions,
+  forcedActiveChallengeIds,
   getEnergy,
   getHighestActiveLayer,
   getLayer,
   getOrderedLayers,
   getPoints,
+  highestActiveLayer,
   isChallengeActive,
+  isChallengeEntered,
   prevLayer,
   resolveHeightRef,
 } from '@/access'
@@ -24,11 +30,13 @@ import { getLayerOrder } from '@/tools/ordinal'
 import { softCapValue } from '@/tools/softCap'
 import { format } from '@/tools/format'
 import { hasInfinityMilestone } from '@/compute/infinityMilestones'
+import { hasInfinityUpgrade } from '@/compute/infinity'
 import { doReset } from './reset'
+import { doInfinityReset } from './infinity'
 import { addLog } from '@/data/log'
 
-/**挑战的所属重置层，'normal'为常规层级，其余为元层id */
-export type ChallengeLayer = 'normal' | string
+/**挑战的所属重置层，'normal'为常规层级，'infinity'为无限挑战 */
+export type ChallengeLayer = 'normal' | 'infinity'
 
 /**挑战目标资源类型 */
 export type ChallengeGoalType = 'points' | 'energy'
@@ -47,11 +55,11 @@ export interface ChallengeDef {
   description: string
   /**所属重置层，决定在挑战页面的哪个子标签页显示 */
   layer: ChallengeLayer
-  /**解锁所需达到的最小高度(存在高度≥它的层级即解锁,与坐标无关) */
-  unlockLayer: LayerHeightRef
-  /**目标层高度:进入/退出挑战时强制重置(解析为高度≥它的最低层级) */
-  resetTarget: LayerHeightRef
-  /**目标资源所在层高度(缺省为目标层的下层) */
+  /**解锁所需达到的最小高度(存在高度≥它的层级即解锁,与坐标无关);无限挑战不填(改由iu15解锁) */
+  unlockLayer?: LayerHeightRef
+  /**目标层高度:进入/退出挑战时强制重置(解析为高度≥它的最低层级);无限挑战不填(整局无限重置) */
+  resetTarget?: LayerHeightRef
+  /**目标资源所在层高度(缺省为目标层的下层;无限挑战恒为层级0) */
   goalLayer?: LayerHeightRef
   /**目标资源类型 */
   goalType?: ChallengeGoalType
@@ -95,19 +103,39 @@ export function getChallenge(id: string): ChallengeDef | undefined {
   return challenges.find((c) => c.id == id)
 }
 
+/**某挑战是否属于无限挑战 */
+export function isInfinityChallenge(def: ChallengeDef): boolean {
+  return def.layer == 'infinity'
+}
+
+/**无限挑战是否已解锁(购买无限升级iu15;无限升级不会被无限重置清除,故解锁后一直有效) */
+export function isInfinityChallengeUnlocked(): boolean {
+  return hasInfinityUpgrade('iu15')
+}
+
 //------状态访问------
 /**
  * 某挑战是否已解锁:存在高度≥unlockLayer的层级
  * 基于实际高度而非坐标,故base缩减后(自然数层级变少)仍按高度判定;
  * 该条件同时保证挑战的目标层一定能解析出来
+ * 无限挑战改由购买无限升级iu15解锁
  */
 export function isUnlocked(def: ChallengeDef): boolean {
-  return resolveHeightRef(def.unlockLayer) != undefined
+  if (isInfinityChallenge(def)) return isInfinityChallengeUnlocked()
+  return def.unlockLayer ? resolveHeightRef(def.unlockLayer) != undefined : false
 }
 
-/**某挑战是否正在激活 */
+/**某挑战是否正在激活(含被无限挑战强制视为进入) */
 export function isActive(def: ChallengeDef): boolean {
   return isChallengeActive(def.id)
+}
+
+/**
+ * 某挑战是否被无限挑战强制视为进入(如IC1期间C1/C2)
+ * 强制生效期间该挑战不可进入/退出/完成(完成次数不增加),卡片只显示"强制生效中"
+ */
+export function isForcedActive(def: ChallengeDef): boolean {
+  return forcedActiveChallengeIds().includes(def.id)
 }
 
 /**某挑战的完成次数 */
@@ -115,14 +143,25 @@ export function completions(def: ChallengeDef): Decimal {
   return challengeCompletions(def.id)
 }
 
-/**目标层坐标(高度精确匹配,否则上取整;高于所有层级时返回undefined) */
-export function challengeResetTarget(def: ChallengeDef): LayerId | undefined {
-  return resolveHeightRef(def.resetTarget)
+/**
+ * 某挑战是否允许批量完成(退出时一次结算尽可能多的完成次数)
+ * 普通挑战由无限里程碑im3解锁;无限挑战暂不支持批量
+ */
+export function allowBatch(def: ChallengeDef): boolean {
+  //TODO: 无限挑战批量完成的解锁途径未定(无限升级/成就/里程碑/知识升级)
+  if (isInfinityChallenge(def)) return false
+  return hasInfinityMilestone('im3')
 }
 
-/**目标资源所在层级坐标(缺省为目标层的下层) */
+/**目标层坐标(高度精确匹配,否则上取整;高于所有层级时返回undefined;无限挑战无目标层) */
+export function challengeResetTarget(def: ChallengeDef): LayerId | undefined {
+  return def.resetTarget ? resolveHeightRef(def.resetTarget) : undefined
+}
+
+/**目标资源所在层级坐标(缺省为目标层的下层;无限挑战恒为层级0) */
 export function challengeGoalLayer(def: ChallengeDef): LayerId | undefined {
   if (def.goalLayer) return resolveHeightRef(def.goalLayer)
+  if (isInfinityChallenge(def)) return [0]
   const target = challengeResetTarget(def)
   return target ? prevLayer(target) : undefined
 }
@@ -131,8 +170,14 @@ export function challengeGoalLayer(def: ChallengeDef): LayerId | undefined {
  * 某挑战当前的目标资源量
  * 语义是"执行目标层重置所需的资源":0阶层级取其下层的点数(或能量);
  * ≥1阶层级取"其下低阶层级的数量"(该分支随高阶层级实装后再校准,见层级系统.md)
+ * 无限挑战恒为层级0点数
  */
 export function challengeResource(def: ChallengeDef): Decimal {
+  //无限挑战:目标资源即层级0点数
+  if (isInfinityChallenge(def)) {
+    const goal = challengeGoalLayer(def)
+    return goal ? getPoints(goal) : new Decimal(0)
+  }
   const target = challengeResetTarget(def)
   if (!target) return new Decimal(0)
   const order = getLayerOrder(target)
@@ -167,33 +212,48 @@ export function challengeRewardValue(def: ChallengeDef): string {
 }
 
 //------操作------
-/**进入/退出挑战时强制重置目标层(无视升级u7/u8;无限里程碑im2解锁后不再强制清空下层升级);目标层已不存在时不做重置 */
+/**
+ * 进入/退出挑战时的强制重置
+ * 普通挑战重置目标层(无视升级u7/u8;无限里程碑im2解锁后不再强制清空下层升级);目标层已不存在时不做重置
+ * 无限挑战执行强制无限重置(不获得无限点数)
+ */
 function challengeReset(def: ChallengeDef) {
+  if (isInfinityChallenge(def)) {
+    doInfinityReset(true)
+    return
+  }
   const target = challengeResetTarget(def)
   if (!target) return
   doReset(target, true, !hasInfinityMilestone('im2'))
 }
 
 /**
- * 退出解锁条件不再满足、或目标层已失效的激活挑战(高阶重置删层后必须上锁)
+ * 退出解锁条件不再满足、或目标层已失效的挑战(高阶重置删层后必须上锁)
  * 此时直接清除激活标记而不做重置,避免在缺失目标层时产生多余删层
+ * 只处理"玩家真正进入过"的挑战(isChallengeEntered):被无限挑战强制视为进入的普通挑战
+ * 从未进入激活列表,若按 isActive 判定会被反复当作失效挑战上锁并每帧刷日志
+ * 无限挑战无目标层,不参与锁定
  */
 export function lockInvalidChallenges() {
   for (const def of getAllChallenges()) {
-    if (!isActive(def)) continue
+    if (def.layer != 'normal') continue
+    if (!isChallengeEntered(def.id) || !isActive(def)) continue
     if (isUnlocked(def) && challengeResetTarget(def)) continue
     player.activeChallenges = player.activeChallenges.filter((id) => id != def.id)
     addLog('info', `挑战上锁：${def.name}`)
   }
 }
 
-/**进入一个挑战:普通挑战互斥(先退出其它已激活的普通挑战),再加入激活列表并强制重置目标层 */
+/**
+ * 进入一个挑战:同层挑战互斥(先退出其它已激活的同层挑战),再加入激活列表并强制重置
+ * 无限挑战之间互斥,但与普通挑战并存(各自独立)
+ * 注:被无限挑战强制视为进入的挑战(isActive为真)会被此处拦下,无法再进入
+ */
 export function enterChallenge(def: ChallengeDef) {
   if (!isUnlocked(def) || isActive(def)) return
-  //普通挑战互斥:进入前退出其它已激活的普通挑战(重置目标层、弹日志、移除激活标记)
   for (const other of getAllChallenges()) {
-    if (other.id != def.id && other.layer == 'normal' && isActive(other)) {
-      exitChallenge(other, false)
+    if (other.id != def.id && other.layer == def.layer && isActive(other)) {
+      exitChallenge(other)
     }
   }
   player.activeChallenges.push(def.id)
@@ -201,24 +261,32 @@ export function enterChallenge(def: ChallengeDef) {
   addLog('info', `进入挑战：${def.name}`)
 }
 
-/**退出挑战(完成或放弃):强制重置目标层并移除激活 */
-export function exitChallenge(def: ChallengeDef, completed: boolean = false) {
+/**
+ * 退出挑战(完成或放弃):先结算完成次数,再移除激活标记并强制重置
+ * 结算规则:未达到目标则不增加次数;达到目标时,允许批量的挑战一次结算尽可能多的次数,否则+1
+ * 强制生效中(如IC1中的C1/C2)的挑战既不能退出也不能结算,直接忽略
+ * @param def 要退出的挑战
+ */
+export function exitChallenge(def: ChallengeDef) {
   if (!isActive(def)) return
+  if (isForcedActive(def)) return
+  //先移除激活标记:无限挑战退出后立即解除对普通挑战的强制激活,
+  //避免后续结算/重置时把"已经退出的挑战"仍算作生效
   player.activeChallenges = player.activeChallenges.filter((id) => id != def.id)
+  const done = challengeDone(def)
+  if (done) {
+    const now = completions(def)
+    //allowBatch时尽可能多结算:goal(j)<=resource 说明"第j+1次"也已完成,故可完成到 j+1 次
+    const target = allowBatch(def) ? maxCompletions(def, challengeResource(def)).add(1) : now.add(1)
+    if (target.gt(now)) player.challenges[def.id] = target
+  }
   challengeReset(def)
-  addLog('info', completed ? `完成挑战：${def.name}` : `退出挑战：${def.name}`)
-}
-
-/**完成挑战:目标达成时点击,+1完成次数并退出 */
-export function completeChallenge(def: ChallengeDef) {
-  if (!isActive(def) || !challengeDone(def)) return
-  player.challenges[def.id] = completions(def).add(1)
-  exitChallenge(def, true)
+  addLog('info', done ? `完成挑战：${def.name}` : `退出挑战：${def.name}`)
 }
 
 /**
  * 批量完成辅助:给定目标资源量,求最大的 j 使 goal(j) <= resource
- * 注意:goal(j)是"第j+1次完成"所需的资源量,故可完成到 j+1 次(见 maxBatchCompletions)
+ * 注意:goal(j)是"第j+1次完成"所需的资源量,故可完成到 j+1 次(见 exitChallenge)
  * 目标公式 goal(k) 单调递增,由 maxSatisfying 在高度域二分求解(至多约129次目标求值)
  */
 export function maxCompletions(def: ChallengeDef, resource: Decimal): Decimal {
@@ -229,25 +297,7 @@ export function maxCompletions(def: ChallengeDef, resource: Decimal): Decimal {
 export function maxBatchCompletions(def: ChallengeDef): Decimal {
   const now = completions(def)
   if (!challengeDone(def)) return now
-  //goal(j) <= resource 说明"第j+1次"也已完成,故可完成到 j+1 次
   return maxCompletions(def, challengeResource(def)).add(1)
-}
-
-/**
- * 完成挑战(挑战卡完成按钮的统一入口)
- * 未解锁无限里程碑im3时退化为逐次完成(+1);解锁后一次结算到当前资源允许的最大完成次数,再退出挑战
- */
-export function batchCompleteChallenge(def: ChallengeDef) {
-  if (!hasInfinityMilestone('im3')) {
-    completeChallenge(def)
-    return
-  }
-  if (!isActive(def) || !challengeDone(def)) return
-  const now = completions(def)
-  const target = maxBatchCompletions(def)
-  if (target.lte(now)) return
-  player.challenges[def.id] = target
-  exitChallenge(def, true)
 }
 
 //------效果注册------
@@ -296,6 +346,28 @@ function isHighestLayer(pos: LayerId): boolean {
   return pos.toString() == getHighestActiveLayer()?.toString()
 }
 
+//------无限挑战的全局速度惩罚(IC5)------
+/**
+ * IC5的速度惩罚指数:2^k
+ * k为"最大的自然数层级"的高度,即 highestActiveLayer([0]) 对应层级的level(小于[1,0]的0阶层级中高度最大的那个)
+ * 只有层级0时k=0,故最差情况恒为x0.001;每多1个高度就平方
+ */
+function ic5SpeedExponent(): Decimal {
+  const L = getLayer(highestActiveLayer([0]))
+  return new Decimal(2).pow(L ? L.level : new Decimal(0))
+}
+
+//无限挑战的效果在注册表之后统一注册(与挑战定义分开,便于阅读)
+registerEffect({
+  id: 'challenge-ic5-speed',
+  name: '挑战惩罚-时间囚笼',
+  target: 'psdSpeed',
+  type: 'mul',
+  value: () => new Decimal(0.001).pow(ic5SpeedExponent()),
+  isActive: () => isChallengeActive('ic5'),
+  text: '全局速度 x{value}',
+})
+
 //------挑战定义------
 
 const CHALLENGES: ChallengeDef[] = [
@@ -308,7 +380,7 @@ const CHALLENGES: ChallengeDef[] = [
     resetTarget: [2],
     goal(k: Decimal): Decimal {
       //完成约9次后目标开始超指数增长(软上限),阻止无限刷挑战
-      return softCapValue(new Decimal(1e5).mul(new Decimal(100).pow(k)), new Decimal(1e24), 2, 1)
+      return new Decimal(1e5).mul(new Decimal(100).pow(softCapValue(k, new Decimal(9), 2)))
     },
     disableEffects: ['buyable-11'],
     rewardEffects: [
@@ -330,7 +402,7 @@ const CHALLENGES: ChallengeDef[] = [
     resetTarget: [2],
     goal(k: Decimal): Decimal {
       //完成约9次后目标开始超指数增长(软上限)
-      return softCapValue(new Decimal(1e5).mul(new Decimal(1000).pow(k)), new Decimal(1e32), 2, 1)
+      return new Decimal(1e5).mul(new Decimal(1000).pow(softCapValue(k, new Decimal(9), 2)))
     },
     disableEffects: ['buyable-12'],
     effects: [
@@ -346,7 +418,7 @@ const CHALLENGES: ChallengeDef[] = [
         target: 'b12:quad',
         type: 'mul',
         value: () => new Decimal(0.9).pow(challengeCompletions('c2')),
-        text: '加倍器价格增速降低 x{value}',
+        text: '加倍器价格指数二次项 x{value}',
       },
     ],
     rewardText: '降低加倍器的价格增长速度',
@@ -359,7 +431,7 @@ const CHALLENGES: ChallengeDef[] = [
     unlockLayer: [3],
     resetTarget: [3],
     goal(k: Decimal): Decimal {
-      return new Decimal(1e6).mul(new Decimal(10000).pow(k))
+      return new Decimal(1e6).mul(new Decimal(10000).pow(softCapValue(k, new Decimal(9), 2)))
     },
     rewardEffects: [
       {
@@ -374,13 +446,14 @@ const CHALLENGES: ChallengeDef[] = [
   },
   {
     id: 'c4',
-    name: '立即折算',
-    description: '挑战期间，购买本层维度或可购买会使除加速器加成外的维度/可购买价格视为多购买1次',
+    name: '花费暴增',
+    description:
+      '挑战期间，购买维度/可购买会使同一层层除加速器加成外的所有维度/可购买价格视为多购买1次',
     layer: 'normal',
     unlockLayer: [3],
     resetTarget: [3],
     goal(k: Decimal): Decimal {
-      return new Decimal(1000).mul(new Decimal(1e4).pow(k))
+      return new Decimal(1000).mul(new Decimal(1e4).pow(softCapValue(k, new Decimal(9), 2)))
     },
     rewardEffects: [
       {
@@ -400,7 +473,7 @@ const CHALLENGES: ChallengeDef[] = [
     unlockLayer: [4],
     resetTarget: [4],
     goal(k: Decimal): Decimal {
-      return new Decimal(1e8).mul(new Decimal(1e6).pow(k))
+      return new Decimal(1e8).mul(new Decimal(1e8).pow(softCapValue(k, new Decimal(9), 2)))
     },
     rewardEffects: [
       {
@@ -420,6 +493,152 @@ const CHALLENGES: ChallengeDef[] = [
       return `维度产量 x(1+t)^${format(exp)}`
     },
   },
+  //------无限挑战(iu15解锁;进/出均强制无限重置,目标资源恒为层级0点数)------
+  {
+    //IC1:强制视为进入C1和C2(见access/challengeState的FORCED_ACTIVE),
+    //加速器/加倍器失效与"重置后点数获取减半"由此自动生效,故本挑战不注册任何惩罚效果
+    id: 'ic1',
+    name: '挑战组合A',
+    description: '挑战期间，C1和C2的惩罚始终生效（加速器与加倍器失效、重置后点数获取减半）',
+    layer: 'infinity',
+    goal(k: Decimal): Decimal {
+      //数值待测试
+      return new Decimal(1e150).mul(new Decimal(1e50).pow(k))
+    },
+    rewardEffects: [
+      {
+        target: 'infinityGain',
+        type: 'mul',
+        //数值待测试
+        value: () => challengeCompletions('ic1').add(1),
+        text: '无限点数获取 x{value}',
+      },
+    ],
+    rewardText: '提升无限点数获取',
+  },
+  {
+    //IC2:强制视为进入C3和C4(能量衰弱与价格偏移自动生效),另加一条加速器底数惩罚
+    id: 'ic2',
+    name: '挑战组合B',
+    description: '挑战期间，C3和C4的惩罚始终生效（能量衰弱、购买视为多买1次），且加速器底数-0.04',
+    layer: 'infinity',
+    goal(k: Decimal): Decimal {
+      //数值待测试
+      return new Decimal(1e80).mul(new Decimal(1e80).pow(k))
+    },
+    effects: [
+      {
+        target: 'b11:base',
+        type: 'add',
+        //数值待测试
+        value: () => new Decimal(-0.04),
+        text: '加速器底数 {value}',
+      },
+    ],
+    rewardEffects: [
+      {
+        target: 'b13:amount',
+        type: 'add',
+        //每次完成获得1个免费的加速器加成(b13的效果为每个+2%)
+        value: () => challengeCompletions('ic2'),
+        text: '免费加速器加成 +{value}',
+      },
+    ],
+    rewardText: '每次完成获得1个免费的加速器加成',
+  },
+  {
+    id: 'ic3',
+    name: '维度折叠',
+    description: '挑战期间，每个层级只有维度1和维度2能生产资源',
+    layer: 'infinity',
+    goal(k: Decimal): Decimal {
+      //数值待测试
+      return new Decimal(1e300).mul(new Decimal(1e200).pow(k))
+    },
+    rewardEffects: [
+      {
+        target: 'dimensionExponent',
+        type: 'add',
+        //数值待测试
+        value: () => new Decimal(0.05).mul(challengeCompletions('ic3').sqrt()),
+        text: '维度指数 +{value}',
+      },
+    ],
+    rewardText: '提升维度指数',
+  },
+  {
+    id: 'ic4',
+    name: '强软上限',
+    description: '挑战期间，价格软上限和维度生产软上限的阈值固定为1，且强度为原来的平方',
+    layer: 'infinity',
+    goal(k: Decimal): Decimal {
+      //数值待测试
+      return new Decimal(1e150).mul(new Decimal(1e75).pow(k))
+    },
+    effects: [
+      {
+        //阈值固定为1
+        target: 'softCap:base',
+        type: 'custom',
+        value: () => 1,
+        text: '价格软上限阈值固定为{value}',
+      },
+      {
+        //阈值固定为1
+        target: 'dimSoftCap:base',
+        type: 'custom',
+        value: () => 1,
+        text: '价格软上限阈值固定为{value}',
+      },
+      {
+        //强度为原来的平方:价格软上限^2→^4,维度生产软上限^0.75→^(0.75²)(两处共用softCap:power槽位)
+        target: 'softCap:power',
+        type: 'exp',
+        value: () => 2,
+        text: '软上限强度 ^{value}',
+      },
+    ],
+    rewardEffects: [
+      {
+        target: 'energy:base',
+        type: 'add',
+        //数值待测试
+        value: () => new Decimal(0.05).mul(challengeCompletions('ic4').add(1).ln()),
+        text: '能量指数 +{value}',
+      },
+    ],
+    rewardText: '进一步提升能量指数',
+  },
+  {
+    id: 'ic5',
+    name: '时间囚笼',
+    description: '挑战期间，全局速度x0.001，每达到1个新层级（高度），该效果将平方',
+    layer: 'infinity',
+    goal(k: Decimal): Decimal {
+      //数值待测试
+      return new Decimal('1e1000').mul(new Decimal('1e1000').pow(k))
+    },
+    rewardEffects: [
+      {
+        target: 'iu33:base',
+        type: 'add',
+        //数值待测试
+        value: () => new Decimal(0.05).mul(challengeCompletions('ic5').add(1).sqrt()),
+        text: '无限维度效果指数 +{value}',
+      },
+    ],
+    rewardText: '提升"无限维度"(iu33)的效果指数',
+  },
 ]
 
 for (const c of CHALLENGES) registerChallenge(c)
+
+//------注册表一致性校验(仅开发构建,防止FORCED_ACTIVE与挑战注册表失配)------
+if (!import.meta.env.PROD) {
+  for (const [icId, forcedIds] of Object.entries(FORCED_ACTIVE)) {
+    if (!getChallenge(icId)) console.error(`[挑战]FORCED_ACTIVE的键${icId}不是已注册的挑战`)
+    for (const id of forcedIds) {
+      if (!getChallenge(id)) console.error(`[挑战]FORCED_ACTIVE的${icId}引用了未注册的挑战${id}`)
+    }
+  }
+}

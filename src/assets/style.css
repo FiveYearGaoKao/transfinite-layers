@@ -36,7 +36,7 @@
   --infinity-panel: #221c0c;
   --infinity-text: #ffe9a8;
   --infinity-dim: #d8c078;
-  --infinity-strong: #fff3c8;
+  --infinity-strong: #ddbb44;
   --infinity-faint: #8a7a3a;
   --infinity-selected-bg: #4a3f14;
   --infinity-hover: #3a3210;
@@ -252,16 +252,26 @@ button.meta.selected {
 button.meta:hover:not(:disabled) {
   background-color: var(--meta-hover);
 }
+/*元层页面的独立配色只作用于该页面(#infinity);页面之外的元素(如挑战页里的无限挑战卡片)
+  加 .theme-{元层id} 类即可复用同一套主题变量,且随全局深/浅主题自动切换*/
+.theme-infinity {
+  --dim: var(--infinity-dim);
+  --strong: var(--infinity-strong);
+  --accent: var(--infinity-accent);
+  --faint: var(--infinity-faint);
+  --selected-bg: var(--infinity-selected-bg);
+  --selected-hover: var(--infinity-selected-hover);
+}
 /*元层导航按钮的独立主题(如无限=黄),样式类:theme-{元层id}。奇点/树/序数落地时按同一模式添加 */
 .mainTab.theme-infinity {
-  border-color: var(--infinity-accent);
+  border-color: var(--infinity-dim);
   color: var(--infinity-dim);
 }
 .mainTab.theme-infinity:hover:not(:disabled) {
   background-color: var(--infinity-hover);
 }
 .mainTab.theme-infinity.selected {
-  border-color: var(--infinity-accent);
+  border-color: var(--infinity-strong);
   background-color: var(--infinity-selected-bg);
   color: var(--infinity-strong);
 }

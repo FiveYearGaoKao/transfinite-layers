@@ -229,6 +229,7 @@ function metaOn(def: MetaAutomationDef): boolean {
         :on="isCardOn(def)"
         :cfg="cfgOf(def.id)"
         :locked="view == 'internal' && !defUnlocked(def)"
+        :show-priority="true"
         @toggle="toggleCard(def)"
         @change="applyPatch(cfgOf(def.id), $event)"
       >

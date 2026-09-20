@@ -5,8 +5,11 @@ import { player } from '@/data/player'
 import { type LayerId, type LayerRef } from '@/data/types'
 import { getLayerIndex, isLayer0, shiftLayer } from '@/tools/ordinal'
 import { getLayer, getLayerName, getOrderedLayers } from './layerGraph'
+import { isChallengeActive } from './challengeState'
 
 export * from './layerGraph'
+//挑战激活状态与完成次数:权威实现在challengeState(叶子模块),经此处统一出口
+export * from './challengeState'
 
 /**层级选择矩阵中的一个按钮项 */
 export interface LayerRow {
@@ -113,10 +116,6 @@ export function registerNormalAchievement(id: string) {
 export function getUnlockedNormalAchievementCount(): number {
   return player.achievements.filter((id) => normalAchievements.has(id)).length
 }
-/**某挑战是否正在激活(可叠加) */
-export function isChallengeActive(id: string): boolean {
-  return player.activeChallenges.includes(id)
-}
 /**
  * 挑战C4的价格偏移:购买本层维度或可购买会使除加速器加成外的价格视为多购买1次
  * 价格索引 = 本物品将购数 + 本层购买总数 + 同批已买次数(每买1个总购买数+1,该物品价格索引再+1)
@@ -133,16 +132,4 @@ export function c4BoughtOffset(
   const total = dimensionTotalBought(layer).add(buyableTotalBought(layer))
   const extra = new Decimal(n).sub(owned).max(0)
   return new Decimal(n).add(total).add(extra)
-}
-/**某挑战的完成次数 */
-export function challengeCompletions(id: string): Decimal {
-  return player.challenges[id] || new Decimal(0)
-}
-/**挑战的总完成次数*/
-export function totalChallengeCompletions(): Decimal {
-  let total = new Decimal(0)
-  for (const id in player.challenges) {
-    total = total.add(challengeCompletions(id))
-  }
-  return total
 }

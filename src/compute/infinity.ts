@@ -146,7 +146,7 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     id: 'iu25',
     name: '元维度提升',
     description: '解锁元维度提升',
-    cost: 1e4,
+    cost: 1e10,
   },
   {
     id: 'iu31',
@@ -198,13 +198,13 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     id: 'iu35',
     name: '元星系',
     description: '解锁元星系',
-    cost: 1e6,
+    cost: 1e20,
   },
   {
     id: 'iu41',
     name: '加速器豁免',
     description: '购买加速器加成不重置任何东西',
-    cost: 1000,
+    cost: 500,
     effectText() {
       return hasInfinityUpgrade('iu41') ? '已解锁' : '未解锁'
     },
@@ -212,12 +212,12 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
   {
     id: 'iu42',
     name: '加速器降价',
-    description: '加速器加成的价格指数4→3',
+    description: '加速器加成的价格指数/2',
     cost: 1000,
     effect: {
       target: 'b13:costMult',
-      type: 'custom',
-      value: () => 3,
+      type: 'mul',
+      value: () => 1 / 2,
     },
     //离散型效果,数值本身无玩家可读意义,统一显示"已解锁/未解锁"
     effectText() {
@@ -246,18 +246,18 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     id: 'iu45',
     name: '元声望升级',
     description: '解锁元声望升级',
-    cost: 1e9,
+    cost: 1e50,
     //TODO: 元声望升级机制待实现
   },
   {
     id: 'iu51',
     name: '零层指数',
-    description: '层级0的维度指数+0.2',
+    description: '层级0的维度指数+0.1',
     cost: 1e4,
     effect: {
       target: 'dimensionExponent',
       type: 'add',
-      value: () => 0.2,
+      value: () => 0.1,
       isActive: (ctx) => isLayer0(ctx.pos),
       text: '层级0维度指数 +{value}',
     },
@@ -270,7 +270,7 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     effect: {
       target: 'softCap:power',
       type: 'exp',
-      value: () => new Decimal(0.99).pow(totalChallengeCompletions()),
+      value: () => new Decimal(0.999).pow(totalChallengeCompletions()),
       text: '软上限强度 ^{value}',
     },
   },
@@ -278,9 +278,9 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     id: 'iu53',
     name: '自协同EX',
     description: '所有维度产量x1.2^(该维度已购)',
-    cost: 1e6,
+    cost: 1e8,
     effect: {
-      target: 'production',
+      target: 'dimensionMult',
       type: 'mul',
       value: (ctx) => new Decimal(1.2).pow(dimensionAmount(ctx.pos, ctx.id, 1)),
       text: '维度产量 x{value}',
@@ -291,13 +291,12 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     name: '自动化永存V',
     description: '升级u8(升级保留)不会被普通层级重置',
     cost: 3125,
-    //TODO: 备选方案"解锁自动无限重置"留待后续,解锁途径(无限升级/成就/知识升级/挑战)未定
   },
   {
     id: 'iu55',
     name: '锻造',
     description: '解锁锻造',
-    cost: 1e15,
+    cost: 1e308,
     //TODO: 锻造机制待实现
   },
 ]
