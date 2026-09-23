@@ -35,6 +35,8 @@ export const INFINITY_MILESTONES: InfinityMilestoneDef[] = [
     effect: {
       target: 'dimensionMult',
       type: 'mul',
+      //无限重置次数只在无限重置时变化(会清缓存),可进帧内计划
+      static: true,
       value: () => player.infinityResets.add(1),
       text: '所有维度乘数 x{value}',
     },
@@ -59,6 +61,7 @@ export const INFINITY_MILESTONES: InfinityMilestoneDef[] = [
     effect: {
       target: 'infinityGain',
       type: 'mul',
+      static: true,
       value: () => player.infinityResets.mul(0.1).add(1).sqrt(),
       text: '无限点数获取 x{value}',
     },
@@ -148,6 +151,6 @@ for (const m of INFINITY_MILESTONES) {
 export function infinityMilestoneEffectValue(def: InfinityMilestoneDef): string {
   if (def.effectText) return def.effectText()
   const e = infinityMilestoneEffect(def)
-  if (e) return effectText(e, { pos: [0], id: 0 })
+  if (e) return effectText(e)
   return hasInfinityMilestone(def.id) ? '已解锁' : '未解锁'
 }

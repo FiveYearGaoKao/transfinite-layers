@@ -14,13 +14,17 @@ import { INFINITY_UNLOCK_POINTS } from '@/data/constants'
 import { isLayer0 } from '@/tools/ordinal'
 import { format } from '@/tools/format'
 import {
-  calculate,
+  applyTo,
+  defineSlot,
   effectText,
   registerEffect,
   slotValue,
   type EffectDef,
   type RegisteredEffect,
 } from './effects'
+
+/**无限维度(iu33)的效果指数槽位(默认0.5;被iu43/ic5奖励提升) */
+const SLOT_IU33_BASE = defineSlot('iu33:base', () => new Decimal(0.5), 'global')
 
 /**无限升级的配置 */
 export interface InfinityUpgradeDef {
@@ -65,6 +69,8 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     effect: {
       target: 'u1:base',
       type: 'add',
+      //只随已购无限升级数变化,可进帧内计划
+      static: true,
       value: () => infinityUpgradeCountInColumn(2).mul(0.5),
       text: '点数作用指数 +{value}',
     },
@@ -77,6 +83,7 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     effect: {
       target: 'energy:base',
       type: 'add',
+      static: true,
       value: () => new Decimal(0.005).mul(infinityUpgradeCount()),
       text: '能量指数 +{value}',
     },
@@ -101,7 +108,8 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     effect: {
       target: 'a41:decay',
       type: 'custom',
-      value: () => 1 / 60,
+      static: true,
+      value: () => new Decimal(1).div(60),
     },
     //离散型效果,数值本身无玩家可读意义,统一显示"已解锁/未解锁"
     effectText() {
@@ -117,7 +125,8 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     effect: {
       target: 'b12:costBase',
       type: 'custom',
-      value: () => 0,
+      static: true,
+      value: () => new Decimal(0),
     },
     //离散型效果(基础价格受序数进制影响,不恒为100),统一显示"已解锁/未解锁"
     effectText() {
@@ -132,6 +141,7 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     effect: {
       target: 'b12:base',
       type: 'add',
+      static: true,
       value: () => new Decimal(0.08).mul(infinityUpgradeCount()),
       text: '加倍器底数 +{value}',
     },
@@ -165,7 +175,8 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     effect: {
       target: 'energy:base',
       type: 'add',
-      value: () => 0.05,
+      static: true,
+      value: () => new Decimal(0.05),
       isActive: () => player.activeChallenges.length > 0,
       text: '能量指数 +{value}',
     },
@@ -178,13 +189,13 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     effect: {
       target: 'dimensionMult',
       type: 'mul',
-      base: { target: 'iu33:base', init: () => 0.5 },
+      base: 'iu33:base',
       value: (_ctx, base) => player.infinityRunTime.add(1).pow(base ?? new Decimal(0.5)),
       text: '所有维度乘数 x{value}',
     },
     //效果文本用槽位组合值计算(iu43会提升指数),直接读取实时值
     effectText() {
-      const base = slotValue({ target: 'iu33:base', init: () => 0.5 }, { pos: [0], id: 0 })
+      const base = slotValue(SLOT_IU33_BASE)
       return `所有维度乘数 x${format(player.infinityRunTime.add(1).pow(base))}`
     },
   },
@@ -217,7 +228,8 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     effect: {
       target: 'b13:costMult',
       type: 'mul',
-      value: () => 1 / 2,
+      static: true,
+      value: () => new Decimal(0.5),
     },
     //离散型效果,数值本身无玩家可读意义,统一显示"已解锁/未解锁"
     effectText() {
@@ -257,7 +269,8 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     effect: {
       target: 'dimensionExponent',
       type: 'add',
-      value: () => 0.1,
+      static: true,
+      value: () => new Decimal(0.1),
       isActive: (ctx) => isLayer0(ctx.pos),
       text: '层级0维度指数 +{value}',
     },
@@ -268,8 +281,9 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     description: '根据完成普通挑战的总数削弱价格软上限的强度',
     cost: 1e5,
     effect: {
-      target: 'softCap:power',
+      target: 'priceCap:power',
       type: 'exp',
+      static: true,
       value: () => new Decimal(0.999).pow(totalChallengeCompletions()),
       text: '软上限强度 ^{value}',
     },
@@ -282,6 +296,8 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     effect: {
       target: 'dimensionMult',
       type: 'mul',
+      //只读"已购维度数量"(type=1),可进帧内计划
+      static: true,
       value: (ctx) => new Decimal(1.2).pow(dimensionAmount(ctx.pos, ctx.id, 1)),
       text: '维度产量 x{value}',
     },
@@ -348,7 +364,7 @@ export function infinityGainBase(): Decimal {
 
 /**无限点数获取量:基础公式经infinityGain加成管道后向下取整(与普通层级重置收益一致) */
 export function infinityGain(): Decimal {
-  return calculate('infinityGain', { pos: [0], id: 0 }, infinityGainBase()).floor()
+  return applyTo('infinityGain', infinityGainBase()).floor()
 }
 
 /**能否进行无限重置(层级0点数达到1.79e308) */
@@ -379,6 +395,6 @@ for (const u of INFINITY_UPGRADES) {
 export function infinityUpgradeEffectValue(def: InfinityUpgradeDef): string {
   if (def.effectText) return def.effectText()
   const e = infinityUpgradeEffect(def)
-  if (e) return effectText(e, { pos: [0], id: 0 })
+  if (e) return effectText(e)
   return hasInfinityUpgrade(def.id) ? '已解锁' : '未解锁'
 }

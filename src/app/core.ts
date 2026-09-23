@@ -10,6 +10,7 @@ import { updateMetaAutomations } from '@/logic/metaAutomations'
 import { lockInvalidChallenges } from '@/logic/challenges'
 import { checkLayerInvariants, syncLayerStructure } from '@/logic/layerStructure'
 import { clearFrameCache } from '@/compute/frameCache'
+import { runStaticSelfCheck } from '@/compute/effects'
 import { getMetaLayers } from '@/meta/registry'
 import { updateAchievements } from '@/logic/achievements'
 import { addLog } from '@/data/log'
@@ -57,6 +58,8 @@ function gameLoop(dt: Decimal) {
   syncLayerStructure()
   if (temp.debugMode) reportInvariantErrors()
   updateLayers(dt)
+  //开发构建自检:生产阶段只增数量/点数/能量,标了static的效果数值必须保持不变
+  if (!import.meta.env.PROD) runStaticSelfCheck('生产阶段后')
   for (const meta of getMetaLayers()) meta.onTick(dt)
   //元层自动化(全局唯一实例,如自动无限重置):排在层级自动化之前——元层重置会清空层级自动化配置
   updateMetaAutomations(dt)
@@ -66,6 +69,8 @@ function gameLoop(dt: Decimal) {
   lockInvalidChallenges()
   applyChallengePenalties(dt)
   updateAchievements()
+  //开发构建自检:帧内若有写状态没清缓存,标了static的数值会在这里暴露出来
+  if (!import.meta.env.PROD) runStaticSelfCheck('帧末')
 }
 /**游戏暂停和恢复 */
 export function pause() {

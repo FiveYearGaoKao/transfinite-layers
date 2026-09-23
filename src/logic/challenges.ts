@@ -5,11 +5,18 @@
 //解锁与目标层都按高度解析(精确匹配,否则上取整),因此不随窗口平移与删层而错位
 //无限挑战(layer=='infinity')复用同一套注册表/完成次数表/激活列表/入口函数,差别只有三点:
 //  解锁条件为无限升级iu15、进入/退出时强制无限重置(不获得资源)、目标资源恒为层级0点数
-import Decimal from 'break_eternity.js'
+import Decimal, { type DecimalSource } from 'break_eternity.js'
 import { player } from '@/data/player'
 import type { Layer, LayerId } from '@/data/types'
-import type { EffectDef, RegisteredEffect } from '@/compute/effects'
 import { effectById, effectText, registerEffect, registerEffectDisabler } from '@/compute/effects'
+import {
+  applyTo,
+  defineSlot,
+  invertAt,
+  type EffectDef,
+  type RegisteredEffect,
+} from '@/compute/effects'
+import { expLinear, type Curve } from '@/compute/curves'
 import {
   FORCED_ACTIVE,
   challengeCompletions,
@@ -27,7 +34,6 @@ import {
 } from '@/access'
 import { maxSatisfying } from '@/tools/bisect'
 import { getLayerOrder } from '@/tools/ordinal'
-import { softCapValue } from '@/tools/softCap'
 import { format } from '@/tools/format'
 import { hasInfinityMilestone } from '@/compute/infinityMilestones'
 import { hasInfinityUpgrade } from '@/compute/infinity'
@@ -42,14 +48,48 @@ export type ChallengeLayer = 'normal' | 'infinity'
 /**挑战目标资源类型 */
 export type ChallengeGoalType = 'points' | 'energy'
 
+//------挑战目标的软上限(注册为challengeGoalIndex上的cap效果)------
+/**挑战目标软上限的基准阈值(完成次数指数超过它后目标开始超指数增长) */
+const CHALLENGE_CAP_BASE = 9
+/**挑战目标软上限的基准幂次 */
+const CHALLENGE_CAP_POWER = 2
+/**挑战目标软上限阈值槽位 */
+const SLOT_CHALLENGE_CAP_BASE = defineSlot(
+  'challengeCap:base',
+  () => new Decimal(CHALLENGE_CAP_BASE),
+  'global',
+)
+/**挑战目标软上限幂次槽位 */
+const SLOT_CHALLENGE_CAP_POWER = defineSlot(
+  'challengeCap:power',
+  () => new Decimal(CHALLENGE_CAP_POWER),
+  'global',
+)
+
+//所有挑战的目标指数都经过这里:软上限因此**不可能漏写**(公式只拿得到已过cap的指数)
+registerEffect({
+  id: 'challenge-goal-softcap',
+  name: '挑战目标软上限',
+  target: 'challengeGoalIndex',
+  type: 'cap',
+  threshold: SLOT_CHALLENGE_CAP_BASE,
+  power: SLOT_CHALLENGE_CAP_POWER,
+  height: 0,
+})
+
+/**完成次数→"已过软上限的目标指数":挑战目标公式的自变量就是这个值 */
+export function challengeGoalIndex(k: Decimal): Decimal {
+  return applyTo('challengeGoalIndex', k)
+}
+
 /**
  * 层级的高度引用:数字数组即"绝对高度的各级"(如[4]表示层级4,[10,15]表示层级10,15)
  * 前导零可省略,故[4]与[0,4]表示同一高度
  */
 export type LayerHeightRef = number[]
 
-/**挑战定义 */
-export interface ChallengeDef {
+/**挑战定义(注册用:目标只需声明形状或公式,goal由registerChallenge生成) */
+export interface ChallengeInput {
   id: string
   name: string
   /**挑战期间的惩罚说明 */
@@ -65,10 +105,12 @@ export interface ChallengeDef {
   /**目标资源类型 */
   goalType?: ChallengeGoalType
   /**
-   * 完成目标:给定当前完成次数k(从0开始),返回下一次完成所需目标资源量
-   * 公式应单调递增且方便求逆(供批量完成机制使用)
+   * 目标形状(指数型,底数=序数进制):目标 = base^(a + b·i),i为完成次数经challengeGoalIndex管道(含软上限)后的指数
+   * 软上限由框架统一施加,公式只拿得到已过cap的指数,因此不会漏写
    */
-  goal(k: Decimal): Decimal
+  goalShape?: { a: DecimalSource; b: DecimalSource }
+  /**非指数型目标的逃生口:入参i已经是过完challengeGoalIndex管道的指数 */
+  goalFormula?(i: Decimal): Decimal
   /**挑战期间禁用的既有效果id(如加速器/加倍器) */
   disableEffects?: string[]
   /**挑战期间生效的惩罚效果(所有层级生效) */
@@ -81,10 +123,33 @@ export interface ChallengeDef {
   rewardValueText?: () => string
 }
 
+/**注册后的挑战:goal已由目标形状/公式生成 */
+export type ChallengeDef = Omit<ChallengeInput, 'goalShape' | 'goalFormula'> & {
+  /**下一次完成所需的目标资源量(k为当前完成次数) */
+  goal(k: Decimal): Decimal
+  /**目标曲线(指数型目标才有;供批量完成做闭式估算) */
+  goalCurve?: Curve
+}
+
 const challenges: ChallengeDef[] = []
 
-/**注册一个挑战并自动注册其效果 */
-export function registerChallenge(def: ChallengeDef) {
+/**
+ * 注册一个挑战并自动注册其效果
+ * 目标统一经challengeGoalIndex管道:先算"已过软上限的指数"i,再交给形状/公式
+ */
+export function registerChallenge(input: ChallengeInput) {
+  const { goalShape, goalFormula, ...rest } = input
+  if (!goalShape && !goalFormula) {
+    throw new Error(`挑战${input.id}缺少goalShape或goalFormula`)
+  }
+  const goalCurve = goalShape
+    ? expLinear({ label: `挑战目标(${input.id})`, a: goalShape.a, b: goalShape.b })
+    : undefined
+  const goal = (k: Decimal): Decimal => {
+    const i = challengeGoalIndex(k)
+    return goalCurve ? goalCurve.at(i) : goalFormula!(i)
+  }
+  const def: ChallengeDef = { ...rest, goal, goalCurve }
   challenges.push(def)
   registerChallengeEffects(def)
 }
@@ -206,7 +271,7 @@ export function challengeRewardValue(def: ChallengeDef): string {
   const parts = (def.rewardEffects ?? [])
     .map((_, i) => {
       const e = effectById(`challenge-${def.id}-reward-${i}`)
-      return e ? effectText(e, { pos: [0], id: 0 }) : ''
+      return e ? effectText(e) : ''
     })
     .filter(Boolean)
   return parts.join('、')
@@ -299,7 +364,19 @@ export function exitChallenge(def: ChallengeDef) {
  * @param resource 目标资源量(通常传入 challengeResource(def))
  */
 export function maxCompletions(def: ChallengeDef, resource: Decimal): Decimal {
-  return maxSatisfying(def.goal, resource, completions(def)).add(1)
+  return maxSatisfying(def.goal, resource, completions(def), goalCountEstimate(def, resource)).add(1)
+}
+
+/**
+ * 批量完成的闭式估算(供maxSatisfying收敛)
+ * 步骤:目标值 →(目标曲线求逆)已过软上限的指数 →(challengeGoalIndex求逆)完成次数
+ * 契约:估算只当搜索锚点(见tools/bisect),偏差只影响迭代次数,不影响正确性
+ */
+function goalCountEstimate(def: ChallengeDef, resource: Decimal): Decimal | undefined {
+  if (!def.goalCurve) return undefined
+  const index = def.goalCurve.inverse(resource)
+  if (index == undefined) return undefined
+  return invertAt('challengeGoalIndex', index)
 }
 
 /**
@@ -385,7 +462,7 @@ registerEffect({
 
 //------挑战定义------
 
-const CHALLENGES: ChallengeDef[] = [
+const CHALLENGES: ChallengeInput[] = [
   {
     id: 'c1',
     name: '无加速器',
@@ -393,15 +470,13 @@ const CHALLENGES: ChallengeDef[] = [
     layer: 'normal',
     unlockLayer: [2],
     resetTarget: [2],
-    goal(k: Decimal): Decimal {
-      //完成约9次后目标开始超指数增长(软上限),阻止无限刷挑战
-      return new Decimal(1e5).mul(new Decimal(100).pow(softCapValue(k, new Decimal(9), 2)))
-    },
+    goalShape: { a: 5, b: 2 },
     disableEffects: ['buyable-11'],
     rewardEffects: [
       {
         target: 'b11:amount',
         type: 'add',
+        static: true,
         value: () => challengeCompletions('c1').mul(5),
         text: '免费加速器等级 +{value}',
       },
@@ -415,15 +490,13 @@ const CHALLENGES: ChallengeDef[] = [
     layer: 'normal',
     unlockLayer: [2],
     resetTarget: [2],
-    goal(k: Decimal): Decimal {
-      //完成约9次后目标开始超指数增长(软上限)
-      return new Decimal(1e5).mul(new Decimal(1000).pow(softCapValue(k, new Decimal(9), 2)))
-    },
+    goalShape: { a: 5, b: 3 },
     disableEffects: ['buyable-12'],
     effects: [
       {
         target: 'pointsGain',
         type: 'mul',
+        static: true,
         value: (ctx) => new Decimal(0.5).pow(getLayer(ctx.pos)?.resetCount ?? new Decimal(0)),
         text: '点数获取 x{value}',
       },
@@ -432,6 +505,7 @@ const CHALLENGES: ChallengeDef[] = [
       {
         target: 'b12:quad',
         type: 'mul',
+        static: true,
         value: () => new Decimal(0.9).pow(challengeCompletions('c2')),
         text: '加倍器价格指数二次项 x{value}',
       },
@@ -445,14 +519,13 @@ const CHALLENGES: ChallengeDef[] = [
     layer: 'normal',
     unlockLayer: [3],
     resetTarget: [3],
-    goal(k: Decimal): Decimal {
-      return new Decimal(1e6).mul(new Decimal(10000).pow(softCapValue(k, new Decimal(9), 2)))
-    },
+    goalShape: { a: 6, b: 4 },
     rewardEffects: [
       {
         target: 'energy:base',
         type: 'add',
         //能量指数是后期数值爆炸主因,奖励改为对数递减:0.03*log2(k+1),首次+0.03
+        static: true,
         value: () => new Decimal(0.03).mul(challengeCompletions('c3').add(1).log(2)),
         text: '能量加成指数 +{value}',
       },
@@ -467,13 +540,12 @@ const CHALLENGES: ChallengeDef[] = [
     layer: 'normal',
     unlockLayer: [3],
     resetTarget: [3],
-    goal(k: Decimal): Decimal {
-      return new Decimal(1000).mul(new Decimal(1e4).pow(softCapValue(k, new Decimal(9), 2)))
-    },
+    goalShape: { a: 3, b: 4 },
     rewardEffects: [
       {
-        target: 'softCap:base',
+        target: 'priceCap:base',
         type: 'exp',
+        static: true,
         value: () => new Decimal(0.15).mul(challengeCompletions('c4')).add(1),
         text: '价格软上限阈值 ^{value}',
       },
@@ -487,16 +559,14 @@ const CHALLENGES: ChallengeDef[] = [
     layer: 'normal',
     unlockLayer: [4],
     resetTarget: [4],
-    goal(k: Decimal): Decimal {
-      return new Decimal(1e8).mul(new Decimal(1e8).pow(softCapValue(k, new Decimal(9), 2)))
-    },
+    goalShape: { a: 8, b: 8 },
     rewardEffects: [
       {
         target: 'dimensionMult',
         type: 'mul',
         value: (ctx) => {
           const L = getLayer(ctx.pos)
-          return L ? L.resetTime.add(1).pow(challengeCompletions('c5').sqrt().div(2)) : 1
+          return L ? L.resetTime.add(1).pow(challengeCompletions('c5').sqrt().div(2)) : new Decimal(1)
         },
         text: '维度产量 x{value}',
       },
@@ -516,15 +586,13 @@ const CHALLENGES: ChallengeDef[] = [
     name: '挑战组合A',
     description: '挑战期间，C1和C2的惩罚始终生效（加速器与加倍器失效、重置后点数获取减半）',
     layer: 'infinity',
-    goal(k: Decimal): Decimal {
-      //数值待测试
-      return new Decimal(1e150).mul(new Decimal(1e50).pow(k))
-    },
+    goalShape: { a: 150, b: 50 },
     rewardEffects: [
       {
         target: 'infinityGain',
         type: 'mul',
         //数值待测试
+        static: true,
         value: () => challengeCompletions('ic1').add(1),
         text: '无限点数获取 x{value}',
       },
@@ -537,15 +605,13 @@ const CHALLENGES: ChallengeDef[] = [
     name: '挑战组合B',
     description: '挑战期间，C3和C4的惩罚始终生效（能量衰弱、购买视为多买1次），且加速器底数-0.04',
     layer: 'infinity',
-    goal(k: Decimal): Decimal {
-      //数值待测试
-      return new Decimal(1e80).mul(new Decimal(1e80).pow(k))
-    },
+    goalShape: { a: 80, b: 80 },
     effects: [
       {
         target: 'b11:base',
         type: 'add',
         //数值待测试
+        static: true,
         value: () => new Decimal(-0.04),
         text: '加速器底数 {value}',
       },
@@ -555,6 +621,7 @@ const CHALLENGES: ChallengeDef[] = [
         target: 'b13:amount',
         type: 'add',
         //每次完成获得1个免费的加速器加成(b13的效果为每个+2%)
+        static: true,
         value: () => challengeCompletions('ic2'),
         text: '免费加速器加成 +{value}',
       },
@@ -566,15 +633,13 @@ const CHALLENGES: ChallengeDef[] = [
     name: '维度折叠',
     description: '挑战期间，每个层级只有维度1和维度2能生产资源',
     layer: 'infinity',
-    goal(k: Decimal): Decimal {
-      //数值待测试
-      return new Decimal(1e300).mul(new Decimal(1e200).pow(k))
-    },
+    goalShape: { a: 300, b: 200 },
     rewardEffects: [
       {
         target: 'dimensionExponent',
         type: 'add',
         //数值待测试
+        static: true,
         value: () => new Decimal(0.05).mul(challengeCompletions('ic3').sqrt()),
         text: '维度指数 +{value}',
       },
@@ -586,30 +651,31 @@ const CHALLENGES: ChallengeDef[] = [
     name: '强软上限',
     description: '挑战期间，价格软上限和维度生产软上限的阈值固定为1，且强度为原来的平方',
     layer: 'infinity',
-    goal(k: Decimal): Decimal {
-      //数值待测试
-      return new Decimal(1e150).mul(new Decimal(1e75).pow(k))
-    },
+    goalShape: { a: 150, b: 75 },
     effects: [
       {
-        //阈值固定为1
-        target: 'softCap:base',
+        //价格软上限阈值固定为1
+        target: 'priceCap:base',
         type: 'custom',
-        value: () => 1,
+        static: true,
+        value: () => new Decimal(1),
         text: '价格软上限阈值固定为{value}',
       },
       {
-        //阈值固定为1
-        target: 'dimSoftCap:base',
+        //维度生产软上限阈值固定为1(与价格软上限是**各自独立**的参数点,只是都被本挑战固定为1)
+        target: 'dimCap:base',
         type: 'custom',
-        value: () => 1,
-        text: '价格软上限阈值固定为{value}',
+        static: true,
+        value: () => new Decimal(1),
+        text: '维度生产软上限阈值固定为{value}',
       },
       {
-        //强度为原来的平方:价格软上限^2→^4,维度生产软上限^0.75→^(0.75²)(两处共用softCap:power槽位)
-        target: 'softCap:power',
+        //强度为原来的平方:价格软上限^2→^4、维度生产软上限^0.75→^(0.75²)
+        //两者参数独立,用targets显式表达"本效果同时作用于这两个数值点"
+        target: ['priceCap:power', 'dimCap:power'],
         type: 'exp',
-        value: () => 2,
+        static: true,
+        value: () => new Decimal(2),
         text: '软上限强度 ^{value}',
       },
     ],
@@ -618,6 +684,7 @@ const CHALLENGES: ChallengeDef[] = [
         target: 'energy:base',
         type: 'add',
         //数值待测试
+        static: true,
         value: () => new Decimal(0.05).mul(challengeCompletions('ic4').add(1).ln()),
         text: '能量指数 +{value}',
       },
@@ -629,15 +696,13 @@ const CHALLENGES: ChallengeDef[] = [
     name: '时间囚笼',
     description: '挑战期间，全局速度x0.001，每达到1个新层级（高度），该效果将平方',
     layer: 'infinity',
-    goal(k: Decimal): Decimal {
-      //数值待测试
-      return new Decimal('1e1000').mul(new Decimal('1e1000').pow(k))
-    },
+    goalShape: { a: 1000, b: 1000 },
     rewardEffects: [
       {
         target: 'iu33:base',
         type: 'add',
         //数值待测试
+        static: true,
         value: () => new Decimal(0.1).mul(challengeCompletions('ic5').sqrt()),
         text: '无限维度效果指数 +{value}',
       },

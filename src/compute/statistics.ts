@@ -1,21 +1,29 @@
-//统计页的加成树节点构建(只读计算)
-//层级加成:每维度一棵"产量树"(初始值→维度乘数→维度指数→最终加成)
-//全局加成:psdSpeed/quizCooldown,初始值非1时显示初始值子节点
+//统计页的加成树(只读)
+//节点全部由"数值点声明"(compute/valuePoints)与效果明细派生:新增机制不需要改本文件
+//- 层级页:每个维度一棵产量树/价格树,每层一棵点数获取树,每个可购买一棵价格树
+//- 全局页:与层级无关的数值点
+//- 效果节点按"前值→后值"展示;软上限(cap)额外给出缩减倍率与实际前后值
 import Decimal from 'break_eternity.js'
 import type { LayerId } from '@/data/types'
 import { DIMENSION_COUNT } from '@/data/constants'
-import { dimensionAmount } from '@/access'
-import { dimensionExponent, dimensionMultiplier, productionPerSecond } from './dimensions'
-import { resetGainBase } from './prestige'
+import { layerKey, getLayerOrder } from '@/tools/ordinal'
+import { format } from '@/tools/format'
+import { getBuyables } from './buyables'
 import {
-  calculate,
+  DEFAULT_CONTEXT,
+  asSlot,
   effectBreakdown,
+  effectTrace,
   slotBreakdown,
+  statPoints,
+  type EffectContext,
   type EffectSlot,
   type EffectType,
   type RegisteredEffect,
+  type StatInput,
+  type ValuePointDef,
 } from './effects'
-import { isLayer0 } from '@/tools/ordinal'
+import './valuePoints'
 
 /**统计明细的可折叠树节点 */
 export interface StatNode {
@@ -23,17 +31,11 @@ export interface StatNode {
   label: string
   sign: string
   value: Decimal
+  /**整行数值文本的替代(软上限用"原值 → 新值";给了它就不再显示 sign+value) */
+  text?: string
+  /**补充说明(如软上限的"高度0") */
+  note?: string
   children: StatNode[]
-}
-
-/**数值点定义(用于全局加成) */
-interface StatTargetDef {
-  target: string
-  /**总值前显示的符号 */
-  sign: string
-  label: (id: number) => string
-  /**计算时的初始值(缺省1) */
-  base?: () => Decimal
 }
 
 /**效果作用方式的符号 */
@@ -41,169 +43,152 @@ function opSign(type: EffectType): string {
   return type == 'mul' ? 'x' : type == 'add' ? '+' : type == 'exp' ? '^' : ''
 }
 
-/**效果来源明细转节点列表 */
-function effectNodes(
-  parts: { e: RegisteredEffect; value: Decimal }[],
-  parentKey: string,
-  pos: LayerId,
-  id: number,
-): StatNode[] {
-  return parts.map((p) => {
-    const key = `${parentKey}:${p.e.id}`
-    const children: StatNode[] = []
-    if (p.e.base) children.push(statSlot(p.e.base, '底数', `${key}:base`, pos, id))
-    if (p.e.amount) children.push(statSlot(p.e.amount, '数量', `${key}:amount`, pos, id))
-    return { key, label: p.e.name ?? p.e.id, sign: opSign(p.e.type), value: p.value, children }
-  })
-}
-
 /**槽位节点:初始值 + 各修饰来源 */
 function statSlot(
-  slot: EffectSlot,
+  slot: EffectSlot | string,
   label: string,
   key: string,
-  pos: LayerId,
-  id: number,
+  ctx: EffectContext,
 ): StatNode {
-  const ctx = { pos, id }
-  const b = slotBreakdown(slot, ctx)
+  const s = asSlot(slot)
+  const b = slotBreakdown(s, ctx)
   return {
     key,
     label,
     sign: '',
     value: b.total,
     children: [
-      {
-        key: `${key}:init`,
-        label: '初始值',
-        sign: '',
-        value: new Decimal(slot.init(ctx)),
-        children: [],
-      },
-      ...effectNodes(b.parts, key, pos, id),
+      { key: `${key}:init`, label: '初始值', sign: '', value: s.init(ctx), children: [] },
+      ...b.parts.map((p) =>
+        effectNode({
+          label: p.e.name ?? p.e.id,
+          sign: opSign(p.e.type),
+          value: p.value,
+          key: `${key}:${p.e.id}`,
+          ctx,
+          params: effectParams(p.e),
+        }),
+      ),
     ],
   }
 }
 
-/**根节点:初始值非1时显示"初始值"子节点(如答题冷却的3600) */
-function statRoot(sd: StatTargetDef, id: number, pos: LayerId): StatNode {
-  const ctx = { pos, id }
-  const base = sd.base ? sd.base() : new Decimal(1)
-  const key = `${sd.target}:${id}`
-  const b = effectBreakdown(sd.target, ctx, base)
+/**效果节点要展示的参数槽位:底数/数量/阈值/幂次(展开可见各自的修饰来源) */
+function effectParams(e: RegisteredEffect): { label: string; slot: EffectSlot | string }[] {
+  const params: { label: string; slot: EffectSlot | string }[] = []
+  if (e.base != undefined) params.push({ label: '底数', slot: e.base })
+  if (e.amount != undefined) params.push({ label: '数量', slot: e.amount })
+  if (e.threshold != undefined) params.push({ label: '阈值', slot: e.threshold })
+  if (e.power != undefined) params.push({ label: '幂次', slot: e.power })
+  return params
+}
+
+/**效果节点 */
+function effectNode(opts: {
+  label: string
+  key: string
+  ctx: EffectContext
+  sign?: string
+  value?: Decimal
+  text?: string
+  note?: string
+  params?: { label: string; slot: EffectSlot | string }[]
+}): StatNode {
+  return {
+    key: opts.key,
+    label: opts.label,
+    sign: opts.sign ?? '',
+    value: opts.value ?? Decimal.dOne,
+    text: opts.text,
+    note: opts.note,
+    children: (opts.params ?? []).map((p) =>
+      statSlot(p.slot, p.label, `${opts.key}:${p.label}`, opts.ctx),
+    ),
+  }
+}
+
+/**数值点输入节点(statInputs声明的公式输入) */
+function inputNode(input: StatInput, key: string, ctx: EffectContext): StatNode {
+  if (input.point) {
+    const b = effectBreakdown(input.point, ctx, new Decimal(1))
+    return {
+      key,
+      label: input.label,
+      sign: input.sign ?? '',
+      value: b.total,
+      children: b.parts.map((p) =>
+        effectNode({
+          label: p.e.name ?? p.e.id,
+          sign: opSign(p.e.type),
+          value: p.value,
+          key: `${key}:${p.e.id}`,
+          ctx,
+          params: effectParams(p.e),
+        }),
+      ),
+    }
+  }
+  return {
+    key,
+    label: input.label,
+    sign: input.sign ?? '',
+    value: input.value ?? new Decimal(1),
+    children: [],
+  }
+}
+
+/**数值点根节点:公式输入 → 初始值 → 效果明细(含cap的前后值) */
+function pointNode(def: ValuePointDef, ctx: EffectContext): StatNode {
+  const key = `${def.id}:${layerKey(ctx.pos)}:${ctx.id}`
+  const base = def.base ? def.base(ctx) : new Decimal(1)
+  const trace = effectTrace(def.id, base, ctx)
   const children: StatNode[] = []
+  for (const input of def.statInputs?.(ctx) ?? []) {
+    children.push(inputNode(input, `${key}:in:${input.label}`, ctx))
+  }
   if (!base.eq(1)) {
     children.push({ key: `${key}:init`, label: '初始值', sign: '', value: base, children: [] })
   }
-  children.push(...effectNodes(b.parts, key, pos, id))
-  return { key, label: sd.label(id), sign: sd.sign, value: b.total, children }
-}
-
-/**
- * 维度产量节点:初始值(维度总数)→维度乘数→维度指数→最终加成(production效果)
- * 各层统一;点数获取由独立的"点数获取"树展示
- */
-function productionNode(pos: LayerId, id: number): StatNode {
-  const ctx = { pos, id }
-  const key = `production:${id}`
-  const amount = dimensionAmount(pos, id)
-  const mult = dimensionMultiplier(pos, id)
-  const exponent = dimensionExponent(pos, id)
-  const multExpBase = amount.mul(mult).pow(exponent)
-  const children: StatNode[] = [
-    { key: `${key}:init`, label: '维度总量', sign: '', value: amount, children: [] },
-    {
-      key: `${key}:mult`,
-      label: '维度乘数',
-      sign: 'x',
-      value: mult,
-      children: effectNodes(
-        effectBreakdown('dimensionMult', ctx, new Decimal(1)).parts,
-        `${key}:mult`,
-        pos,
-        id,
-      ),
-    },
-    {
-      key: `${key}:exp`,
-      label: '维度指数',
-      sign: '^',
-      value: exponent,
-      children: effectNodes(
-        effectBreakdown('dimensionExponent', ctx, new Decimal(1)).parts,
-        `${key}:exp`,
-        pos,
-        id,
-      ),
-    },
-    ...effectNodes(effectBreakdown('production', ctx, multExpBase).parts, `${key}:fin`, pos, id),
-  ]
-  return {
-    key,
-    label: `维度${id + 1}产量`,
-    sign: '',
-    value: productionPerSecond(pos, id),
-    children,
+  for (const s of trace.steps) {
+    const isCap = s.e.type == 'cap'
+    //没咬住的软上限(前后值相同)不显示:否则每个维度都会挂一条
+    if (isCap && s.after.eq(s.before)) continue
+    //cap节点只写"名称 原值 → 新值"(高度进说明),阈值/幂次在展开的参数槽位里看
+    children.push(
+      effectNode({
+        label: s.e.name ?? s.e.id,
+        sign: isCap ? '' : opSign(s.e.type),
+        value: isCap ? s.after : s.value,
+        text: isCap ? `${format(s.before)} → ${format(s.after)}` : undefined,
+        note: isCap
+          ? `高度${s.e.height ?? 0}`
+          : s.e.type == 'custom'
+            ? `${format(s.before)} → ${format(s.after)}`
+            : undefined,
+        key: `${key}:${s.e.id}`,
+        ctx,
+        params: effectParams(s.e),
+      }),
+    )
   }
+  const label = typeof def.label == 'function' ? def.label(ctx) : def.label
+  return { key, label, sign: def.sign ?? '', value: trace.total, children }
 }
 
-/**
- * "点数获取"树:初始值(层0=维度1产量,层1+=重置收益基础值)→点数获取效果(加倍器/点数作用/深度加成等)
- * 软上限(custom效果)单独列出实际缩减比例
- */
-function pointsGainNode(pos: LayerId): StatNode {
-  const ctx = { pos, id: 0 }
-  const key = 'pointsGain:0'
-  //初始值:层0为维度1原始产量(不含点数获取),层1+为重置收益基础值
-  let base: Decimal
-  if (isLayer0(pos)) {
-    base = dimensionAmount(pos, 0).mul(dimensionMultiplier(pos, 0)).pow(dimensionExponent(pos, 0))
-    base = calculate('production', ctx, base)
-  } else {
-    base = resetGainBase(pos)
-  }
-  const b = effectBreakdown('pointsGain', ctx, base)
-  const normal = b.parts.filter((p) => p.e.type != 'custom')
-  const children: StatNode[] = [
-    { key: `${key}:init`, label: '初始值', sign: '', value: base, children: [] },
-    ...effectNodes(normal, key, pos, 0),
-  ]
-  //软上限(custom效果)的实际缩减比例:软上限前(普通加成后) vs 软上限后的最终值
-  // if (b.parts.some((p) => p.e.type == 'custom')) {
-  //   const before = normal.reduce(
-  //     (acc, p) => (p.e.type == 'add' ? acc.add(p.value) : acc.mul(p.value)),
-  //     base,
-  //   )
-  //   children.push({
-  //     key: `${key}:softcap`,
-  //     label: `点数生产软上限(${format(new Decimal(LAYER0_CAP_THRESHOLD), 0)})`,
-  //     sign: 'x',
-  //     value: b.total.div(before),
-  //     children: [],
-  //   })
-  // }
-  return { key, label: '点数获取', sign: '+', value: b.total, children }
-}
-
-/**所选层级的加成树(每维度一棵产量树 + 一棵点数获取树) */
+/**所选层级的加成树(按数值点声明的分组派生) */
 export function buildLayerNodes(pos: LayerId): StatNode[] {
-  const nodes = Array.from({ length: DIMENSION_COUNT }, (_, id) => productionNode(pos, id))
-  nodes.push(pointsGainNode(pos))
+  const nodes: StatNode[] = []
+  for (const def of statPoints('dimension')) {
+    for (let id = 0; id < DIMENSION_COUNT; id++) nodes.push(pointNode(def, { pos, id }))
+  }
+  for (const def of statPoints('layer')) nodes.push(pointNode(def, { pos, id: 0 }))
+  for (const def of statPoints('buyable')) {
+    for (const b of getBuyables(getLayerOrder(pos))) nodes.push(pointNode(def, { pos, id: b.id }))
+  }
   return nodes
 }
 
 /**全局(层级无关)加成树 */
 export function buildGlobalNodes(): StatNode[] {
-  const defs: StatTargetDef[] = [
-    { target: 'psdSpeed', sign: 'x', label: () => '全局速度' },
-    {
-      target: 'quizCooldown',
-      sign: '',
-      base: () => new Decimal(3600),
-      label: () => '答题冷却(秒)',
-    },
-    { target: 'knowledgeGain', sign: 'x', label: () => '知识获取' },
-    { target: 'infinityGain', sign: 'x', label: () => '无限点数获取' },
-  ]
-  return defs.map((sd) => statRoot(sd, 0, [0]))
+  return statPoints('once').map((def) => pointNode(def, DEFAULT_CONTEXT))
 }

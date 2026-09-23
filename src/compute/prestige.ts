@@ -14,7 +14,7 @@ import {
   PRESTIGE_THRESHOLD,
   PRESTIGE_THRESHOLD_LAYER0,
 } from '@/data/constants'
-import { calculate } from './effects'
+import { applyTo } from './effects'
 import { crossLayerExponent, crossLayerThreshold } from './crossLayer'
 
 interface prestigeFormula {
@@ -61,7 +61,7 @@ export function resetGainBase(layer: LayerId): Decimal {
 export function resetGain(layer: LayerId): Decimal {
   let value = resetGainBase(layer)
   //非层级0的层的重置收益即点数获取，应用点数获取类的加成
-  if (!isLayer0(layer)) value = calculate('pointsGain', { pos: layer, id: 0 }, value)
+  if (!isLayer0(layer)) value = applyTo('pointsGain', value, { pos: layer })
   return value.floor()
 }
 /**判断层级能否重置 */

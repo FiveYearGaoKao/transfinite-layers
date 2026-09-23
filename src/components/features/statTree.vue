@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, reactive } from 'vue'
-import Decimal from 'break_eternity.js'
 import { format } from '@/tools/format'
 import type { StatNode } from '@/compute/statistics'
 
@@ -19,8 +18,9 @@ function toggle(key: string) {
 interface FlatRow {
   key: string
   label: string
-  sign: string
-  value: Decimal
+  /**整行数值文本(软上限是"原值 → 新值") */
+  display: string
+  note?: string
   depth: number
   hasChildren: boolean
 }
@@ -31,8 +31,8 @@ const flatTree = computed<FlatRow[]>(() => {
       out.push({
         key: n.key,
         label: n.label,
-        sign: n.sign,
-        value: n.value,
+        display: n.text ?? `${n.sign}${format(n.value)}`,
+        note: n.note,
         depth,
         hasChildren: n.children.length > 0,
       })
@@ -57,7 +57,9 @@ const flatTree = computed<FlatRow[]>(() => {
         <span class="statArrow">{{
           row.hasChildren ? (expanded.has(row.key) ? '▼' : '▶') : '·'
         }}</span
-        >{{ row.label }} {{ row.sign }}{{ format(row.value) }}
+        >{{ row.label }} {{ row.display }}<span v-if="row.note" class="statNote">
+          ({{ row.note }})</span
+        >
       </span>
     </div>
   </div>
@@ -84,6 +86,9 @@ div.statRow.clickable:hover {
 span.statArrow {
   display: inline-block;
   width: 14px;
+  color: var(--dim);
+}
+span.statNote {
   color: var(--dim);
 }
 </style>

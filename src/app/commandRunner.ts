@@ -15,6 +15,8 @@ import {
 import { getPlayerValue, setPlayerValue } from '@/logic/debug'
 import { settings, saveSettings, applyTheme } from '@/app/settings'
 import { formatTime } from '@/tools/format'
+import { cacheStats, resetCacheStats } from '@/compute/frameCache'
+import { resetSearchStats, searchStats } from '@/tools/bisect'
 
 /**调试指令是否可用:仅开发构建(非发布版)且在调试模式下 */
 function debugCommandsAvailable(): boolean {
@@ -186,6 +188,23 @@ const COMMANDS: CommandInfo[] = [
       }
       const res = setPlayerValue(path, value)
       addLog(res.ok ? 'info' : 'warning', res.ok ? `已设置:${res.text}` : `设置失败:${res.text}`)
+    },
+  },
+  {
+    cmd: 'perf',
+    usage: '/perf',
+    description: '调试:输出帧内缓存命中统计与搜索求值次数,并清零计数',
+    debugOnly: true,
+    unlocked: () => debugCommandsAvailable(),
+    run() {
+      //未命中次数即"缓存没起作用"的次数:改动缓存/锚点后用它对比(见docs/面向开发者/性能.md)
+      const lines = cacheStats()
+        .slice(0, 12)
+        .map((s) => `${s.label} 命中${s.hits} 未命中${s.misses}`)
+      lines.push(`搜索求值 ${searchStats().evals} 次(计数已清零)`)
+      addLog('info', lines.join('\n'))
+      resetCacheStats()
+      resetSearchStats()
     },
   },
 ]

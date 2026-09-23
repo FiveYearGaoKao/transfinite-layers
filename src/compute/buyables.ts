@@ -1,12 +1,16 @@
 //可购买的定义与计算
 import Decimal from 'break_eternity.js'
 import type { LayerId } from '@/data/types'
-import { c4BoughtOffset, getBase, getLayer, hasAchievement } from '@/access'
+import { c4BoughtOffset, getLayer, hasAchievement } from '@/access'
 import { hasInfinityUpgrade } from './infinity'
 import { initializeDimensions } from '@/data/types'
-import { softCap, softCapInverse, SOFT_CAP_HEIGHT } from './softCap'
-import { lastTermBudget } from '@/tools/geometricSum'
+import { SOFT_CAP_HEIGHT, SLOT_PRICE_CAP_BASE, SLOT_PRICE_CAP_POWER } from './softCap'
+import { expLinear, floored, powerDoubleExp, powerQuadratic, type Curve } from './curves'
+import { estimateCount } from './estimate'
 import {
+  applyTo,
+  asSlot,
+  defineSlot,
   effectText,
   registerEffect,
   renderText,
@@ -15,6 +19,26 @@ import {
   type RegisteredEffect,
 } from './effects'
 
+//------槽位(具名注册,全局唯一;缓存按id命中,禁止在调用点临时构造)------
+/**加速器底数(1.1;被b13按层加成,故缓存键必须带层级) */
+const SLOT_B11_BASE = defineSlot('b11:base', () => new Decimal(1.1))
+/**加速器等级(含u3/成就提供的免费等级) */
+const SLOT_B11_AMOUNT = defineSlot('b11:amount', (ctx) => buyableAmount(ctx.pos, 11))
+/**加倍器底数(2) */
+const SLOT_B12_BASE = defineSlot('b12:base', () => new Decimal(2), 'global')
+/**加倍器等级 */
+const SLOT_B12_AMOUNT = defineSlot('b12:amount', (ctx) => buyableAmount(ctx.pos, 12))
+/**加倍器价格公式的二次项系数(0.1) */
+const SLOT_B12_QUAD = defineSlot('b12:quad', () => new Decimal(0.1), 'global')
+/**加倍器价格公式的常数项(2) */
+const SLOT_B12_COST_BASE = defineSlot('b12:costBase', () => new Decimal(2), 'global')
+/**加速器加成的基础值(0.02) */
+const SLOT_B13_BASE = defineSlot('b13:base', () => new Decimal(0.02), 'global')
+/**加速器加成等级 */
+const SLOT_B13_AMOUNT = defineSlot('b13:amount', (ctx) => buyableAmount(ctx.pos, 13))
+/**加速器加成的价格指数(4) */
+const SLOT_B13_COST_MULT = defineSlot('b13:costMult', () => new Decimal(4), 'global')
+
 /**可购买的配置 */
 export interface BuyableDef {
   id: number
@@ -22,10 +46,10 @@ export interface BuyableDef {
   description: string
   /**显示该可购买的层级阶数 */
   order: number
-  /**已购n个时下一个的价格 */
-  cost(layer: LayerId, n: Decimal): Decimal
-  /**是否对该可购买的价格应用软上限(可选power覆盖默认) */
-  softCap?: { power?: number }
+  /**价格曲线(正向/逆向同源;底数=序数进制,见compute/curves) */
+  curve: Curve
+  /**是否对该可购买的价格应用软上限(可选) */
+  softCap?: boolean
   /**数值效果(声明式,可省略) */
   effect?: EffectDef
   /**购买效果的文字说明(缺省从effect自动生成) */
@@ -43,15 +67,16 @@ export const BUYABLES: BuyableDef[] = [
     name: '加速器',
     description: '所有维度生产+{basePercent}%，效果叠乘',
     order: 0,
-    cost(_layer: LayerId, n: Decimal): Decimal {
-      return new Decimal(getBase()).pow(n.div(2).add(1)).floor()
-    },
-    softCap: {},
+    curve: floored(
+      expLinear({ label: '加速器价格', a: () => new Decimal(1), b: () => new Decimal(0.5) }),
+    ),
+    softCap: true,
     effect: {
       target: 'dimensionMult',
       type: 'mul',
-      base: { target: 'b11:base', init: () => 1.1 },
-      amount: { target: 'b11:amount', init: (ctx) => buyableAmount(ctx.pos, 11) },
+      base: SLOT_B11_BASE,
+      amount: SLOT_B11_AMOUNT,
+      static: true,
       text: '维度生产 x{value}',
     },
   },
@@ -60,17 +85,20 @@ export const BUYABLES: BuyableDef[] = [
     name: '加倍器',
     description: '点数获取x{base}，效果叠乘',
     order: 0,
-    cost(_layer: LayerId, n: Decimal): Decimal {
-      //10^[n*(1+q*n)+costBase],q为b12:quad槽位(可被挑战C2奖励降低),costBase为b12:costBase槽位(可被无限升级iu22降为0)
-      const quad = slotValue({ target: 'b12:quad', init: () => 0.1 }, { pos: _layer, id: 0 })
-      const costBase = slotValue({ target: 'b12:costBase', init: () => 2 }, { pos: _layer, id: 0 })
-      return new Decimal(getBase()).pow(n.mul(n.mul(quad).add(1)).add(costBase)).floor()
-    },
+    curve: floored(
+      powerQuadratic({
+        label: '加倍器价格',
+        //10^[n*(1+q*n)+costBase]:q为b12:quad槽位(可被挑战C2奖励降低),c为b12:costBase槽位(可被iu22降为0)
+        q: () => slotValue(SLOT_B12_QUAD),
+        c: () => slotValue(SLOT_B12_COST_BASE),
+      }),
+    ),
     effect: {
       target: 'pointsGain',
       type: 'mul',
-      base: { target: 'b12:base', init: () => 2 },
-      amount: { target: 'b12:amount', init: (ctx) => buyableAmount(ctx.pos, 12) },
+      base: SLOT_B12_BASE,
+      amount: SLOT_B12_AMOUNT,
+      static: true,
       text: '点数获取 x{value}',
     },
   },
@@ -80,16 +108,17 @@ export const BUYABLES: BuyableDef[] = [
     description: '使加速器的效果+{base}，效果叠加',
     order: 0,
     isUnlocked: (_layer: LayerId) => hasAchievement('a22'),
-    cost(_layer: LayerId, n: Decimal): Decimal {
-      //base^(2^n * costMult * base),costMult为b13:costMult槽位(可被无限升级iu41由4降为3)
-      const costMult = slotValue({ target: 'b13:costMult', init: () => 4 }, { pos: _layer, id: 0 })
-      return new Decimal(getBase()).pow(new Decimal(2).pow(n).mul(costMult).mul(getBase()))
-    },
+    curve: powerDoubleExp({
+      label: '加速器加成价格',
+      //base^(2^n·costMult·base):costMult为b13:costMult槽位(可被无限升级iu42由4降为3)
+      m: () => slotValue(SLOT_B13_COST_MULT),
+    }),
     effect: {
       target: 'b11:base',
       type: 'add',
-      base: { target: 'b13:base', init: () => 0.02 },
-      amount: { target: 'b13:amount', init: (ctx) => buyableAmount(ctx.pos, 13) },
+      base: SLOT_B13_BASE,
+      amount: SLOT_B13_AMOUNT,
+      static: true,
       text: '加速器效果 +{value}',
     },
     onBuy(layer: LayerId) {
@@ -123,85 +152,51 @@ export function isUnlocked(layer: LayerId, id: number): boolean {
   if (!def) return true
   return def.isUnlocked?.(layer) ?? true
 }
-/**已购n个时某可购买的价格 */
-export function buyableCostAt(layer: LayerId, id: number, n: Decimal): Decimal {
+/**已购n个时某可购买的原始价格(未经buyableCost管道) */
+function rawBuyableCost(layer: LayerId, id: number, n: Decimal): Decimal {
   const def = getBuyable(id)
   if (!def) return Decimal.dInf
   //挑战C4:除加速器加成(b13)外,偏移量含同批已买次数,见c4BoughtOffset(非C4时n原样)
   let n2 = n
   if (id != 13) n2 = c4BoughtOffset(layer, buyableAmount(layer, id), n)
-  const price = def.cost(layer, n2)
-  //声明了softCap的可购买在获取价格时统一套对数软上限(见compute/softCap)
-  if (def.softCap) return softCap(price, def.softCap.power)
-  return price
+  return def.curve.at(n2)
+}
+
+/**已购n个时某可购买的价格(经buyableCost数值点管道:软上限等加成都在那里注册) */
+export function buyableCostAt(layer: LayerId, id: number, n: Decimal): Decimal {
+  return applyTo('buyableCost', rawBuyableCost(layer, id, n), { pos: layer, id })
+}
+
+/**某可购买"下一项"的原始价格(统计页展示"初始值"用) */
+export function buyableCostBase(layer: LayerId, id: number): Decimal {
+  return rawBuyableCost(layer, id, buyableAmount(layer, id))
 }
 /**获取某可购买的成本 */
 export function buyableCost(layer: LayerId, id: number): Decimal {
   return buyableCostAt(layer, id, buyableAmount(layer, id))
 }
 
-/**估算时给"总成本→末项"的折算留的余量(>1):宁可略大,偏大只多迭代几次 */
-const ESTIMATE_SAFETY = new Decimal(1.1)
-
 /**
  * 可购买"在预算内最多能再买多少个"的闭式估算(供maxBuyable做搜索锚点)
- * 依据(各可购买的价格公式见上方BUYABLES定义,变更公式时必须同步检查本函数):
- *   b11: base^(n/2+1)         → 公比 base^(1/2),对数对n线性
- *   b12: 10^(n(1+q·n)+c)      → log10(价格)是n的二次式,用求根公式反解(取正根)
- *   b13: base^(2^n·K),K=costMult·base → 双重指数,末项主导,由末项预算直接取对数
- * 之后再套软上限的逆(compute/softCap的softCapInverse,对任意p>0成立)
- * 返回值与sumCost的第2参数同口径(即"还能再买几个"),可直接作为maxSatisfying的锚点
- * 注:估算偏差不会算错,只会让maxSatisfying多迭代几次
+ * 骨架见compute/estimate:公比折算 → 价格域求逆(软上限) → 曲线求逆;各物品的价格曲线见上方BUYABLES定义
+ * 契约:估算只当搜索锚点(见tools/bisect),偏差只影响迭代次数,不影响正确性
  * @param budget 总预算
- * @returns 可购买数量的估算;买不起/公式不适用时返回undefined(退回通用搜索)
+ * @returns 可购买数量的估算;买不起/不可估算时返回undefined(退回通用搜索)
  */
 export function buyableSumEstimate(
   layer: LayerId,
   id: number,
   budget: Decimal,
 ): Decimal | undefined {
-  if (!budget.gt(0)) return new Decimal(0)
-  const base = new Decimal(getBase())
-  if (!base.gt(1)) return undefined
   const def = getBuyable(id)
   if (!def) return undefined
-  const target = lastTermBudget(budget, base, ESTIMATE_SAFETY)
-  if (!target.gt(0)) return undefined
-  let nk: Decimal
-  if (id == 11) {
-    //base^(n/2+1) <= target → n <= 2·(log_base(target) - 1)
-    nk = target.log(base).sub(1).mul(2)
-  } else if (id == 12) {
-    //10^(n(1+q·n)+c) <= target → q·n² + n + (c - log10(target)) <= 0,取正根
-    const quad = slotValue({ target: 'b12:quad', init: () => 0.1 }, { pos: layer, id: 0 })
-    const costBase = slotValue({ target: 'b12:costBase', init: () => 2 }, { pos: layer, id: 0 })
-    if (!quad.gt(0)) return undefined
-    const disc = new Decimal(1).add(quad.mul(4).mul(costBase.sub(target.log10())))
-    if (!disc.gte(0)) return new Decimal(0)
-    nk = disc.sqrt().sub(1).div(quad.mul(2))
-  } else if (id == 13) {
-    //base^(2^n·K) <= target → 2^n <= log_base(target)/K → n <= log2(...)
-    const costMult = slotValue({ target: 'b13:costMult', init: () => 4 }, { pos: layer, id: 0 })
-    const K = costMult.mul(base)
-    if (!K.gt(0)) return undefined
-    const exp = target.log(base).div(K)
-    if (!exp.gt(1)) return new Decimal(0)
-    nk = exp.log(2)
-  } else {
-    return undefined
-  }
-  //套软上限的逆(见compute/softCap的softCapInverse);未声明softCap的可购买不处理
-  if (def.softCap) {
-    const uncapped = softCapInverse(nk, def.softCap.power, SOFT_CAP_HEIGHT)
-    //幂次非正时不可逆:不估算,退回通用搜索
-    if (!uncapped) return undefined
-    nk = uncapped
-  }
-  if (!nk.isFinite() || nk.isNan() || !nk.gt(0)) return new Decimal(0)
-  const owned = buyableAmount(layer, id)
-  const canBuy = nk.floor().sub(owned).add(1)
-  //估算落在已购数之下时返回0(合法估算):不可返回负数,否则整条锚定路径会被判为非法而退化
-  return canBuy.gt(0) ? canBuy : new Decimal(0)
+  return estimateCount(
+    def.curve,
+    'buyableCost',
+    { pos: layer, id },
+    budget,
+    buyableAmount(layer, id),
+  )
 }
 /**判断是否能购买某可购买 */
 export function canBuyBuyable(layer: LayerId, id: number): boolean {
@@ -224,33 +219,48 @@ for (const b of BUYABLES) {
   if (e) registerEffect(e)
 }
 
+//价格软上限:注册在buyableCost数值点上,只对声明了softCap的可购买生效
+//(与dimensionCost的cap共用同一组参数槽位,故两处参数不会漂移)
+const SOFT_CAPPED_BUYABLES = new Set(BUYABLES.filter((b) => b.softCap).map((b) => b.id))
+registerEffect({
+  id: 'buyable-price-softcap',
+  name: '价格软上限',
+  target: 'buyableCost',
+  type: 'cap',
+  threshold: SLOT_PRICE_CAP_BASE,
+  power: SLOT_PRICE_CAP_POWER,
+  height: SOFT_CAP_HEIGHT,
+  //价格求值是热路径,故用Set判定而不是每次find物品定义
+  isActive: (ctx) => SOFT_CAPPED_BUYABLES.has(ctx.id),
+})
+
 /**某可购买的效果文字(自定义优先,否则从效果自动生成) */
 export function buyableEffectText(def: BuyableDef, layer: LayerId): string {
   if (def.effectText) return def.effectText(layer, buyableAmount(layer, def.id))
   const e = buyableEffect(def)
-  return e ? effectText(e, { pos: layer, id: 0 }) : ''
+  return e ? effectText(e, { pos: layer }) : ''
 }
 
 /**某可购买的描述(支持{value}{base}{basePercent}{amount}模板) */
 export function buyableDescription(def: BuyableDef, layer: LayerId): string {
   if (def.description.indexOf('{') < 0) return def.description
   const e = buyableEffect(def)
-  return e ? renderText(def.description, e, { pos: layer, id: 0 }) : def.description
+  return e ? renderText(def.description, e, { pos: layer }) : def.description
 }
 
 /**某可购买的生效等级(等级槽位的组合值,含免费等级) */
 export function buyableLevel(layer: LayerId, id: number): Decimal {
   const def = getBuyable(id)
   const slot = def?.effect?.amount
-  if (!slot) return buyableAmount(layer, id)
-  return slotValue(slot, { pos: layer, id: 0 })
+  if (slot == undefined) return buyableAmount(layer, id)
+  return slotValue(slot, { pos: layer })
 }
 
 /**某可购买的免费等级(等级槽位被修饰的部分) */
 export function buyableFreeLevels(layer: LayerId, id: number): Decimal {
   const def = getBuyable(id)
   const slot = def?.effect?.amount
-  if (!slot) return new Decimal(0)
+  if (slot == undefined) return new Decimal(0)
   const ctx = { pos: layer, id: 0 }
-  return slotValue(slot, ctx).sub(new Decimal(slot.init(ctx)))
+  return slotValue(slot, ctx).sub(asSlot(slot).init(ctx))
 }

@@ -1,6 +1,7 @@
 //升级的定义与计算
 //升级是一次性的，每个升级有三种状态:无法购买、可以购买、已购买
 //通用升级默认在层级1及以上出现，层级0只出现u2、u3，u9需层级2及以上解锁
+//价格公式只依赖序数进制(cost(base)),由upgradeCost在读价时统一传入
 import Decimal from 'break_eternity.js'
 import type { LayerId } from '@/data/types'
 import {
@@ -16,6 +17,7 @@ import {
 import { compareLayer, isLayer0, nextLayer } from '@/tools/ordinal'
 import { format } from '@/tools/format'
 import {
+  defineSlot,
   effectText,
   registerEffect,
   slotValue,
@@ -28,6 +30,9 @@ import { DIMENSION_COUNT, U1_POINTS_EXPONENT } from '@/data/constants'
 /**u3额外加速器:本层已购维度总等级×0.2 + 已购升级数量 */
 const FREE_LEVEL_FACTOR = 0.2
 
+/**点数作用的加成指数槽位(u1:base,默认2;被iu12等修饰) */
+const SLOT_U1_BASE = defineSlot('u1:base', () => new Decimal(U1_POINTS_EXPONENT), 'global')
+
 /**点数作用的加成公式:ln(点数+1)+1 再取exponent次方 */
 function u1Formula(points: Decimal, exponent: Decimal): Decimal {
   return points.add(1).ln().add(1).pow(exponent)
@@ -35,7 +40,7 @@ function u1Formula(points: Decimal, exponent: Decimal): Decimal {
 
 /**点数作用的当前指数(u1:base槽位的组合值) */
 function u1Exponent(): Decimal {
-  return slotValue({ target: 'u1:base', init: () => U1_POINTS_EXPONENT }, { pos: [0], id: 0 })
+  return slotValue(SLOT_U1_BASE)
 }
 
 /**升级的配置 */
@@ -45,7 +50,8 @@ export interface UpgradeDef {
   description: string
   /**该升级适用的层级阶数 */
   order: number
-  cost(layer: LayerId): Decimal
+  /**价格公式:只依赖序数进制(需要层级的升级另开会话,不要在cost里读player) */
+  cost(base: Decimal): Decimal
   /**数值效果(声明式,可省略) */
   effect?: EffectDef
   /**购买效果的文字说明(缺省从effect自动生成) */
@@ -63,19 +69,19 @@ export const UPGRADES: UpgradeDef[] = [
     name: '点数作用',
     description: '根据本层点数，加成{prevLayer}点数获取',
     order: 0,
-    cost(): Decimal {
-      return new Decimal(getBase())
+    cost(base: Decimal): Decimal {
+      return base
     },
     effect: {
       target: 'pointsGain',
       type: 'mul',
-      base: { target: 'u1:base', init: () => U1_POINTS_EXPONENT },
+      base: 'u1:base',
       value(ctx, base) {
         //0阶内容的加成来源:nextLayer(pos,0)(同窗口的下一槽位),来源不存在则不生效
         //跨层时该来源的加成被强化为 value^reward^(gap-1),即指数×reward^(gap-1)
         const source = nextLayer(ctx.pos, 0)
         const S = getLayer(source)
-        if (!S || !hasUpgrade(source, 1)) return 1
+        if (!S || !hasUpgrade(source, 1)) return new Decimal(1)
         const exponent = crossLayerExponentBonus(base ?? new Decimal(1), levelGap(source))
         return u1Formula(S.points, exponent)
       },
@@ -96,12 +102,14 @@ export const UPGRADES: UpgradeDef[] = [
     name: '自协同',
     description: '本层每个维度的产量 x(该维度已购+1)',
     order: 0,
-    cost(): Decimal {
-      return new Decimal(getBase()).div(2).floor().pow(2)
+    cost(base: Decimal): Decimal {
+      return base.div(2).floor().pow(2)
     },
     effect: {
       target: 'dimensionMult',
       type: 'mul',
+      //只读"已购数量"(type=1,生产阶段不变),故可进帧内计划
+      static: true,
       value: (ctx) => dimensionAmount(ctx.pos, ctx.id, 1).add(1),
     },
     //自协同对不同维度的加成数值不同,效果行显示当前数值范围(最小值~最大值)而非单一值
@@ -122,15 +130,17 @@ export const UPGRADES: UpgradeDef[] = [
     name: '额外加速器',
     description: '根据本层已购买的维度与升级总数提供额外加速器等级',
     order: 0,
-    cost(): Decimal {
-      return new Decimal(getBase()).pow(getBase() * 2)
+    cost(base: Decimal): Decimal {
+      return base.pow(base.mul(2))
     },
     effect: {
       target: 'b11:amount',
       type: 'add',
+      //只读已购维度/升级数量,可进帧内计划
+      static: true,
       value: (ctx) => {
         const L = getLayer(ctx.pos)
-        if (!L) return 0
+        if (!L) return new Decimal(0)
         return dimensionTotalBought(ctx.pos).mul(FREE_LEVEL_FACTOR).add(L.upgrades.length).floor()
       },
       text: '+{value}',
@@ -142,8 +152,8 @@ export const UPGRADES: UpgradeDef[] = [
     name: '自动化1',
     description: '解锁{prevLayer}维度自动购买',
     order: 0,
-    cost(): Decimal {
-      return new Decimal(getBase()).pow(2)
+    cost(base: Decimal): Decimal {
+      return base.pow(2)
     },
     isUnlocked: (layer: LayerId) => !isLayer0(layer),
   },
@@ -152,8 +162,8 @@ export const UPGRADES: UpgradeDef[] = [
     name: '自动化2',
     description: '解锁{prevLayer}加速器和加倍器自动购买',
     order: 0,
-    cost(): Decimal {
-      return new Decimal(getBase()).pow(2).mul(3)
+    cost(base: Decimal): Decimal {
+      return base.pow(2).mul(3)
     },
     isUnlocked: (layer: LayerId) => !isLayer0(layer),
     requires: [4],
@@ -163,8 +173,8 @@ export const UPGRADES: UpgradeDef[] = [
     name: '自动重置',
     description: '解锁{currentLayer}自动重置',
     order: 0,
-    cost(): Decimal {
-      return new Decimal(getBase()).pow(3)
+    cost(base: Decimal): Decimal {
+      return base.pow(3)
     },
     isUnlocked: (layer: LayerId) => !isLayer0(layer),
     requires: [5],
@@ -174,8 +184,8 @@ export const UPGRADES: UpgradeDef[] = [
     name: '能量保留',
     description: '本层重置时不重置本层能量和维度数量',
     order: 0,
-    cost(): Decimal {
-      return new Decimal(getBase()).pow(2).mul(5)
+    cost(base: Decimal): Decimal {
+      return base.pow(2).mul(5)
     },
     isUnlocked: (layer: LayerId) => !isLayer0(layer),
   },
@@ -184,8 +194,8 @@ export const UPGRADES: UpgradeDef[] = [
     name: '升级保留',
     description: '本层重置时保留下层升级',
     order: 0,
-    cost(): Decimal {
-      return new Decimal(getBase()).pow(3).mul(5)
+    cost(base: Decimal): Decimal {
+      return base.pow(3).mul(5)
     },
     isUnlocked: (layer: LayerId) => !isLayer0(layer),
     requires: [7],
@@ -195,8 +205,8 @@ export const UPGRADES: UpgradeDef[] = [
     name: '软重置',
     description: '下层每秒获得100%重置获得过的最高点数',
     order: 0,
-    cost(): Decimal {
-      return new Decimal(getBase()).pow(5)
+    cost(base: Decimal): Decimal {
+      return base.pow(5)
     },
     isUnlocked: (layer: LayerId) => compareLayer(layer, [2]) >= 0,
     requires: [8],
@@ -218,11 +228,11 @@ export function getUpgrades(order: number): UpgradeDef[] {
 export function hasUpgrade(layer: LayerId, id: number): boolean {
   return getLayer(layer)?.upgrades.includes(id) || false
 }
-/**获取某升级的成本 */
+/**获取某升级的成本(价格公式的底数=序数进制,在此统一读取并传入) */
 export function upgradeCost(layer: LayerId, id: number): Decimal {
   const def = getUpgrade(id)
   if (!def) return Decimal.dInf
-  return def.cost(layer)
+  return def.cost(new Decimal(getBase()))
 }
 /**判断某升级是否已解锁 */
 export function isUnlocked(layer: LayerId, id: number): boolean {
@@ -265,6 +275,6 @@ for (const u of UPGRADES) {
 export function upgradeEffectValue(def: UpgradeDef, layer: LayerId): string {
   if (def.effectText) return def.effectText(layer)
   const e = upgradeEffect(def)
-  if (e) return effectText(e, { pos: layer, id: 0 })
+  if (e) return effectText(e, { pos: layer })
   return hasUpgrade(layer, def.id) ? '已解锁' : '未解锁'
 }

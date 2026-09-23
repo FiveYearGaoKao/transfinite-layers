@@ -9,28 +9,28 @@
 //- 奖励侧(设 k = reward^(g-1)):加法类(如u9每秒比例) ×k,乘法类(如u1/能量)取 k 次幂(等价于指数×k)
 import Decimal, { type DecimalSource } from 'break_eternity.js'
 import { CROSS_LAYER_PENALTY_BASE, CROSS_LAYER_REWARD_BASE } from '@/data/constants'
-import { slotValue, type EffectContext, type EffectSlot } from './effects'
+import { defineSlot, slotValue, type EffectSlot } from './effects'
 
 /**跨层奖励底数槽位(初始2,仅用于加成) */
-export const crossLayerRewardSlot: EffectSlot = {
-  target: 'crossLayer:reward',
-  init: () => CROSS_LAYER_REWARD_BASE,
-}
+export const crossLayerRewardSlot: EffectSlot = defineSlot(
+  'crossLayer:reward',
+  () => new Decimal(CROSS_LAYER_REWARD_BASE),
+  'global',
+)
 /**跨层惩罚底数槽位(初始4,仅用于重置门槛与收益指数) */
-export const crossLayerPenaltySlot: EffectSlot = {
-  target: 'crossLayer:penalty',
-  init: () => CROSS_LAYER_PENALTY_BASE,
-}
-/**跨层底数与层级无关,统一用该上下文读取 */
-const CROSS_LAYER_CTX: EffectContext = { pos: [0], id: 0 }
+export const crossLayerPenaltySlot: EffectSlot = defineSlot(
+  'crossLayer:penalty',
+  () => new Decimal(CROSS_LAYER_PENALTY_BASE),
+  'global',
+)
 
 /**当前跨层奖励底数(全局) */
 export function crossLayerReward(): Decimal {
-  return slotValue(crossLayerRewardSlot, CROSS_LAYER_CTX)
+  return slotValue(crossLayerRewardSlot)
 }
 /**当前跨层惩罚底数(全局) */
 export function crossLayerPenalty(): Decimal {
-  return slotValue(crossLayerPenaltySlot, CROSS_LAYER_CTX)
+  return slotValue(crossLayerPenaltySlot)
 }
 /**
  * 跨层倍率 base^(g-1)

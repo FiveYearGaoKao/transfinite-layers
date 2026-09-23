@@ -17,6 +17,19 @@ import Decimal, { type DecimalSource } from 'break_eternity.js'
 /**各种搜索循环的防御上限 */
 const LOOP_CAP = 64
 
+/**开发构建的搜索求值计数(观测"锚点好不好用";正式构建不记录) */
+let searchEvals = 0
+
+/**搜索求值统计(开发构建的可观测性入口) */
+export function searchStats(): { evals: number } {
+  return { evals: searchEvals }
+}
+
+/**清空搜索求值统计 */
+export function resetSearchStats() {
+  searchEvals = 0
+}
+
 /**
  * 递增函数的最大可满足计数:返回最大的 k ≥ 0 使 g(k) = f(origin + k) ≤ budget
  * 一个都不可满足时返回0
@@ -52,6 +65,7 @@ export function maxSatisfying(
  * NaN/∞ 视为不可满足(防御价格溢出)
  */
 function satisfies(g: (k: Decimal) => Decimal, budget: Decimal, k: Decimal): boolean {
+  if (import.meta.env.DEV) searchEvals++
   const y = g(k)
   return !y.isNan() && y.lte(budget)
 }

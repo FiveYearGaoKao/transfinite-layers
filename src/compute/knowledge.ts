@@ -11,7 +11,7 @@ import {
 import { temp } from '@/data/temp'
 import { format, formatWhole } from '@/tools/format'
 import {
-  calculate,
+  applyTo,
   effectText,
   registerEffect,
   type EffectDef,
@@ -116,6 +116,8 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     effect: {
       target: 'dimensionMult',
       type: 'mul',
+      //只读已解锁成就数,可进帧内计划
+      static: true,
       value: () => new Decimal(1.05).pow(getUnlockedNormalAchievementCount()),
       text: '所有维度倍率 x{value}',
     },
@@ -134,6 +136,7 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     effect: {
       target: 'dimensionMult',
       type: 'mul',
+      static: true,
       value: () => new Decimal(1.1).pow(knowledgeAmount('boost-production')),
       text: '所有维度生产 x{value}',
     },
@@ -150,11 +153,12 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     effect: {
       target: 'pointsGain',
       type: 'mul',
+      //只读层级高度(解锁新层级会清缓存),可进帧内计划
+      static: true,
       value: (ctx) => {
-        //同窗口内最高层与本层的高度差(用level相减,而非链上步数)
         const top = getLayer(getWindowTopLayer(ctx.pos))
         const L = getLayer(ctx.pos)
-        if (!top || !L) return 1
+        if (!top || !L) return new Decimal(1)
         return new Decimal(2).pow(Decimal.max(0, top.level.sub(L.level)))
       },
       text: '点数获取 x{value}',
@@ -194,6 +198,7 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     effect: {
       target: 'quizCooldown',
       type: 'mul',
+      static: true,
       value: () => new Decimal(0.9).pow(knowledgeAmount('quiz-accel')),
       text: '答题冷却 x{value}',
     },
@@ -260,6 +265,7 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     effect: {
       target: 'knowledgeGain',
       type: 'mul',
+      static: true,
       value: () => new Decimal(0.01).mul(getUnlockedNormalAchievementCount()).add(1),
       text: '知识获取 x{value}',
     },
@@ -280,7 +286,7 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
  * @returns 实际增加的知识
  */
 export function addKnowledge(value: Decimal): Decimal {
-  value = calculate('knowledgeGain', { pos: [0], id: 0 }, value)
+  value = applyTo('knowledgeGain', value)
   player.knowledge = player.knowledge.add(value)
   return value
 }
@@ -360,7 +366,7 @@ for (const def of KNOWLEDGE_UPGRADES) {
 export function knowledgeEffectText(def: KnowledgeUpgradeDef): string {
   if (def.effectText) return def.effectText()
   const e = knowledgeEffect(def)
-  return e ? effectText(e, { pos: [0], id: 0 }) : ''
+  return e ? effectText(e) : ''
 }
 
 //------全局速度------
@@ -388,7 +394,7 @@ registerEffect({
 
 /**当前全局速度(调试初始值经加成管道后的结果) */
 export function getPsdSpeed(): Decimal {
-  return calculate('psdSpeed', { pos: [0], id: 0 }, new Decimal(1))
+  return applyTo('psdSpeed', new Decimal(1))
 }
 
 /**加速倍率档位(按time-overclock已购数解锁,始终包含1x与2x) */

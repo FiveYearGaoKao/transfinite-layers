@@ -11,7 +11,7 @@ export const temp = reactive({
    * 唯一作用是作为重置目标来解锁下一个层级(见logic/layerStructure.unlockNextLayer)
    */
   tempLayers: {} as LayerList,
-  /**伪现实速度初始值(调试用,不存档) */
+  /**全局速度初始值(调试用,不存档) */
   debugSpeed: new Decimal(1),
   /**调试模式开关(不存档,生产构建中入口隐藏) */
   debugMode: false,

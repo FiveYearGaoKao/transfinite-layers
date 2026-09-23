@@ -7,8 +7,11 @@ import type { LayerId } from '@/data/types'
 import { getEnergy, getLayer, isChallengeActive, levelGap, prevLayer } from '@/access'
 import { nextLayer } from '@/tools/ordinal'
 import { ENERGY_BONUS_EXPONENT } from '@/data/constants'
-import { registerEffect, slotValue } from './effects'
+import { defineSlot, registerEffect, slotValue } from './effects'
 import { crossLayerExponentBonus } from './crossLayer'
+
+/**能量加成指数槽位(默认0.2;被iu13/iu32/挑战奖励等修饰) */
+const SLOT_ENERGY_BASE = defineSlot('energy:base', () => new Decimal(ENERGY_BONUS_EXPONENT), 'global')
 
 /**单层能量给低层维度的加成数值:能量指数由 energy:base 槽位决定 */
 function energyFactor(energy: Decimal, exponent: Decimal): Decimal {
@@ -24,11 +27,11 @@ registerEffect({
   name: '能量加成',
   target: 'dimensionMult',
   type: 'mul',
-  base: { target: 'energy:base', init: () => ENERGY_BONUS_EXPONENT },
+  base: 'energy:base',
   value(ctx, base) {
     const source = nextLayer(ctx.pos, 0)
     const S = getLayer(source)
-    if (!S) return 1
+    if (!S) return new Decimal(1)
     const exponent = crossLayerExponentBonus(base ?? new Decimal(1), levelGap(source))
     return energyFactor(getEnergy(source), exponent)
   },
@@ -37,10 +40,7 @@ registerEffect({
 /**某层能量给其低层所有维度的加成数值(只计本层贡献,含跨层强化) */
 export function energyBonus(layer: LayerId): Decimal {
   const exponent = crossLayerExponentBonus(
-    slotValue(
-      { target: 'energy:base', init: () => ENERGY_BONUS_EXPONENT },
-      { pos: prevLayer(layer), id: 0 },
-    ),
+    slotValue(SLOT_ENERGY_BASE, { pos: prevLayer(layer) }),
     levelGap(layer),
   )
   return energyFactor(getEnergy(layer), exponent)

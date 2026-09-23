@@ -16,6 +16,7 @@ import {
 import { buyableAmount } from '@/compute/buyables'
 import { dimensionCost, dimensionMultiplier } from '@/compute/dimensions'
 import {
+  defineSlot,
   effectValueById,
   registerEffect,
   slotValue,
@@ -29,6 +30,9 @@ import { compareLayer } from '@/tools/ordinal'
 import { hasInfinityUpgrade } from '@/compute/infinity'
 import { addKnowledge } from '@/compute/knowledge'
 import { clearFrameCache } from '@/compute/frameCache'
+
+/**成就"逆流而上"(a41)的衰减速度槽位(默认1;无限升级iu21降为1/60) */
+const SLOT_A41_DECAY = defineSlot('a41:decay', () => new Decimal(1), 'global')
 
 /**成就定义 */
 export interface AchievementDef {
@@ -132,7 +136,8 @@ const normalAchievements: AchievementDef[] = [
     effect: {
       target: 'dimensionMult',
       type: 'mul',
-      value: (ctx) => ctx.id + 1,
+      static: true,
+      value: (ctx) => new Decimal(ctx.id + 1),
       text: '维度乘数 x{value}',
     },
     effectText: '使每个维度获得等于其编号的乘数',
@@ -171,7 +176,8 @@ const normalAchievements: AchievementDef[] = [
     effect: {
       target: 'energy:base',
       type: 'add',
-      value: () => 0.01,
+      static: true,
+      value: () => new Decimal(0.01),
       text: '能量加成指数 +{value}',
     },
     effectText: '能量加成指数+0.01',
@@ -208,7 +214,8 @@ const normalAchievements: AchievementDef[] = [
     effect: {
       target: 'b11:base',
       type: 'add',
-      value: () => 0.01,
+      static: true,
+      value: () => new Decimal(0.01),
       text: '加速器底数+{value}',
     },
     effectText: '加速器底数 +0.01',
@@ -261,7 +268,7 @@ const normalAchievements: AchievementDef[] = [
       type: 'mul',
       //衰减速度经a41:decay槽位修饰(默认1,无限升级iu21将其降为0.1使衰减慢10倍)
       value: (ctx) => {
-        const decay = slotValue({ target: 'a41:decay', init: () => 1 }, ctx)
+        const decay = slotValue(SLOT_A41_DECAY, ctx)
         return new Decimal(10).root(
           new Decimal(getLayer(ctx.pos)?.resetTime || 0).mul(decay).add(1),
         )
@@ -279,7 +286,8 @@ const normalAchievements: AchievementDef[] = [
     effect: {
       target: 'b12:base',
       type: 'add',
-      value: () => 0.2,
+      static: true,
+      value: () => new Decimal(0.2),
       text: '维度乘数 x{value}',
     },
     effectText: '加倍器底数+0.2',
@@ -315,7 +323,8 @@ const normalAchievements: AchievementDef[] = [
     effect: {
       target: 'dimensionMult',
       type: 'mul',
-      value: (ctx) => (ctx.id == 0 ? 5 : 1),
+      static: true,
+      value: (ctx) => new Decimal(ctx.id == 0 ? 5 : 1),
       text: '维度乘数 x{value}',
     },
     effectText: '维度1乘数 x5',
@@ -345,6 +354,7 @@ const normalAchievements: AchievementDef[] = [
     effect: {
       target: 'b11:amount',
       type: 'add',
+      static: true,
       value: (ctx) => new Decimal(5).mul(buyableAmount(ctx.pos, 13)),
       text: '免费加速器数量+{value}',
     },
@@ -377,7 +387,7 @@ const normalAchievements: AchievementDef[] = [
     description: '使层级1提供的能量加成指数>=0.33',
     reward: 50,
     isCompleted: () =>
-      slotValue({ target: 'energy:base', init: () => 0.2 }, { pos: [0], id: 1 }).gte(0.33),
+      slotValue('energy:base').gte(0.33),
   },
   {
     id: 'a54',
@@ -398,7 +408,7 @@ const normalAchievements: AchievementDef[] = [
     name: '三倍体',
     description: '使层级0加倍器的效果底数>=3',
     reward: 66,
-    isCompleted: () => slotValue({ target: 'b12:base', init: () => 2 }, { pos: [0], id: 1 }).gte(3),
+    isCompleted: () => slotValue('b12:base').gte(3),
   },
   {
     id: 'a57',

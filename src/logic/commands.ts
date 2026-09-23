@@ -4,7 +4,7 @@ import { player } from '@/data/player'
 import { addLog } from '@/data/log'
 import { rng, seedInt } from '@/save/rng'
 import { addKnowledge, hasKnowledge, knowledgeAmount } from '@/compute/knowledge'
-import { calculate } from '@/compute/effects'
+import { applyTo } from '@/compute/effects'
 import { formatWhole } from '@/tools/format'
 import { generateMathQuestion, type QuizQuestion } from '@/tools/quiz'
 import { unlockAchievementById } from './achievements'
@@ -65,7 +65,7 @@ export function quizReward(): Decimal {
 }
 /**当前答题冷却(秒)=3600*0.9^答题加速等级(经加成管道计算,统计页可见) */
 export function quizCooldown(): Decimal {
-  return calculate('quizCooldown', { pos: [0], id: 0 }, new Decimal(QUIZ_BASE_COOLDOWN))
+  return applyTo('quizCooldown', new Decimal(QUIZ_BASE_COOLDOWN))
 }
 /**距上次答题的冷却剩余(秒),<=0表示可答题 */
 export function quizCooldownLeft(): Decimal {
