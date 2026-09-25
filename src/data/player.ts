@@ -154,4 +154,10 @@ export function initializeSave(): Player {
   return player
 }
 export const emptySave: Player = initializeSave()
+
+//Decimal一律不参与Vue的响应式代理:所有Decimal运算都是整体替换(player.x = player.x.add(y)),
+//从不就地修改,故代理它的内部字段(sign/mag/layer)没有任何意义,只会让每次运算都多走一层Proxy。
+//标记打在原型上,因此运行期新建的Decimal同样跳过代理(逐个markRaw做不到这点)。
+//依据与实测见 docs/面向开发者/数值.md;禁止在游戏代码里就地修改Decimal(normalize()等)
+Object.defineProperty(Decimal.prototype, '__v_skip', { value: true })
 export const player: Player = reactive(initializeSave())

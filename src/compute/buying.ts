@@ -7,9 +7,26 @@
 //- 价格经加成管道(如dimensionCost/buyableCost)的物品要声明sumInverse=priceCountAnchor;
 //  不经管道的物品(知识升级)直接用curve.sumInverse
 import Decimal from 'break_eternity.js'
+import type { LayerId } from '@/data/types'
+import { getLayer } from '@/access'
+import { isLayer0 } from '@/tools/ordinal'
 import { maxSatisfying } from '@/tools/bisect'
 import { invertAt, type EffectContextInput } from './effects'
 import type { Curve } from './curves'
+
+/**
+ * 防呆:这次购买会不会让层级0再也无法产出
+ * 条件:层级0 + 买完后本层没有任何维度(没有任何产出) + 买完剩下的点数买不起维度1
+ * (维度1的价格恒为 base^0 = 1,故"剩下点数<1"就等于"再也买不起任何东西")
+ * 典型案例:无限升级iu22把加倍器基础价降到1,在"无限重置后的1点开局"买它会直接花光点数
+ * 注:买维度本身不受此限(买下维度正是恢复产出的唯一手段)
+ * @param remaining 购买后本层剩下的点数
+ */
+export function purchaseStallsLayer0(layer: LayerId, remaining: Decimal): boolean {
+  if (!isLayer0(layer) || remaining.gte(1)) return false
+  const L = getLayer(layer)
+  return L != undefined && L.dimensions.every((d) => d[0].eq(0))
+}
 
 /**
  * 几何级数的和:末项为last、公比为ratio、共k项

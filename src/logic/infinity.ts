@@ -3,6 +3,7 @@
 //import '@/compute/infinityMilestones'的效果注册随下方具名导入一并执行
 import Decimal from 'break_eternity.js'
 import { player } from '@/data/player'
+import { activeInfinityChallengeIds, isInfinityChallenge } from '@/access'
 import { clearTempLayers } from '@/data/temp'
 import { getLayerOrder, isLayer0 } from '@/tools/ordinal'
 import { addLog } from '@/data/log'
@@ -18,8 +19,8 @@ import {
   getInfinityMilestones,
   infinityPassiveRate,
 } from '@/compute/infinityMilestones'
-import { getChallenge } from './challenges'
 import { resetAutomationsForInfinityReset } from './automations'
+import { checkInfinityResetAchievements } from './achievements'
 import { recreateLayer0, wipeLayersWhere } from './layerStructure'
 import { clearFrameCache } from '@/compute/frameCache'
 
@@ -59,6 +60,8 @@ function doInfinityResetInner(forced: boolean): void {
     }
     //记录最短重置时间(取历史最小值),并归零本次无限经历的时间
     player.infinityBestResetTime = Decimal.min(player.infinityBestResetTime, player.infinityRunTime)
+    //无限重置瞬间的成就判定(如a65"不解锁其它层级进行无限重置"):必须在下面删层之前求值
+    checkInfinityResetAchievements({ gain })
   }
   //无论是否强制重置，都重置本次无限经过的时间
   player.infinityRunTime = new Decimal(0)
@@ -68,8 +71,9 @@ function doInfinityResetInner(forced: boolean): void {
   //层级0重建为全新初始状态(1点数),无视成就a24"速通高手"的保留1点(此时即1点,天然一致)
   recreateLayer0()
   //清空普通挑战的完成记录(im8解锁后完成次数变为min(x,1));无限挑战的完成次数不随无限重置删除
+  //挑战的层归属按id约定判定(见access/challengeState),不引用挑战注册表以避免循环引用
   for (const id of Object.keys(player.challenges)) {
-    if (getChallenge(id)?.layer != 'normal') continue
+    if (isInfinityChallenge(id)) continue
     if (hasInfinityMilestone('im8')) {
       player.challenges[id] = Decimal.min(player.challenges[id] || new Decimal(0), 1)
     } else {
@@ -77,9 +81,7 @@ function doInfinityResetInner(forced: boolean): void {
     }
   }
   //无限重置只退出普通挑战:无限挑战保持激活(其惩罚持续生效),完成次数也不受影响
-  player.activeChallenges = player.activeChallenges.filter(
-    (id) => getChallenge(id)?.layer != 'normal',
-  )
+  player.activeChallenges = activeInfinityChallengeIds()
   //复位当前层级与临时层、自动化配置(automationUnlocked永久保留)
   player.layerSubtab = [0]
   clearTempLayers()

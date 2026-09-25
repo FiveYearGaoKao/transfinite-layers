@@ -14,14 +14,14 @@ npm run format       # prettier --write src/
 
 ## Architecture (must follow)
 
-Strict unidirectional dependency: `tools → data → save/access → compute → logic → meta → ui`. No imports going upward.
+Strict unidirectional dependency: `tools → data → save/access → compute → logic → meta → ui`. No imports going upward. The few known exceptions (and why `import type` does not count) are listed in `docs/面向开发者/架构.md` §三 — do not add a new one without checking whether it can be inverted.
 
 - **`compute/` is read-only**: functions take state as input, return results, never mutate.
 - **`logic/` is where mutations happen** (purchases, resets, automations).
 - **`effects.ts` is the central buff pipeline**: every numeric modifier (cost, production, reset gain, soft cap, etc.) goes through `registerEffect`/`applyTo`. New systems MUST register effects here, never bake bonuses into core formulas.
 - **Effect mechanism rules** (full contract: `docs/面向开发者/effect机制.md`):
-  - A value point's `id` **is** its modifier target — one id, one meaning. Never let two meanings share a target (that bug made iu52 weaken the dimension-production soft cap).
-  - Slots are **named and registered** with `defineSlot(id, init)`; never construct a slot object at a call site, never write `{ pos: [0], id: 0 }` (ctx defaults to `pos=[0], id=0`).
+  - A value point's `id` **is** its modifier target — one id, one meaning. Never let two meanings share a target.
+  - Slots are **named and registered** with `defineSlot(id, init, scope)`; never construct a slot object at a call site, never write `{ pos: [0], id: 0 }` (ctx defaults to `pos=[0], id=0`). `scope` picks the frame-cache key: `'item'` (default, value may depend on layer+item id), `'layer'` (value depends on the layer only — same cache entry for every dimension/item of that layer), `'global'` (no context at all). Declaring `'layer'`/`'global'` is a promise that the dev-build cross-context check will verify.
   - Numeric callbacks (`init`/`value`/curve methods) **return `Decimal`**; the read path must not re-wrap with `new Decimal(...)`.
   - Soft caps are the `cap` effect type (`threshold`/`power` slots + constant `height`) — never call `softCap`/`softCapValue` from core formulas, and never write a soft cap as `custom` (that makes the value point non-invertible).
   - `applyTo`/`slotValue` results are invertible only while every step is `add`/`mul`/`exp`/`cap`; any `custom` on a price point disables inversion (falls back to `maxSatisfying`).
@@ -29,7 +29,7 @@ Strict unidirectional dependency: `tools → data → save/access → compute �
   - Price formulas and challenge goals get their base from `getBase()` **only through `compute/curves.ts` / `upgradeCost`** — item and goal declarations must not read `player` directly, and prices that must not scale with the ordinal base (knowledge upgrades) must pass an explicit constant base. `player.base` is an integer in 2..10; a curve's `inverse` must return `undefined` when `base <= 1`.
 - **Frame cache contract** (`compute/frameCache.ts`): per numeric point the frame keeps an **effect plan** (active effect list + folded steps, built by folding adjacent same-type `static` effects), plus slot values and curve parameters. Any write that changes these must call `clearFrameCache()` right after (see `docs/面向开发者/性能.md`). Violating it only yields stale values within the frame, but they will be wrong — dev builds catch it via `runStaticSelfCheck` (called after production and at end of frame in `app/core.ts`). Effects are **dynamic by default** — mark `static` only when the value depends solely on purchases/unlocks/layer structure (never on points, produced amounts, energy or time), and never read `current` from a `static` effect. Use the debug command `/perf` to see cache hit/miss counts and search evaluation counts.
 
-Full architecture & effect mechanism docs: `docs/面向开发者/` (架构.md, 层级系统.md, effect机制.md, 存档.md, 开发规范.md, 性能.md). Player-facing guide: `docs/面向玩家/玩法指南.md`.
+Full architecture & effect mechanism docs: `docs/面向开发者/` (架构.md, 层级系统.md, effect机制.md, 数值.md, 性能.md, 存档.md, 开发规范.md). Player-facing guide: `docs/面向玩家/玩法指南.md`.
 
 ### Layers (read `docs/面向开发者/层级系统.md` first)
 - Coordinates (`LayerId`) are **slots only**, written in **canonical form**: no leading zero digits (all-zero = `[0]`), so coordinates do not depend on `player.layerDepth`. Build and look up keys with `layerKey()` (`tools/ordinal.ts`) — never hand-write `pos.toString()`, and never use a zero-padded coordinate like `[0,5]`. A layer's height lives in `Layer.level`. Layer relations go through `access/layerGraph.ts` (`prevLayer` / `levelGap` / `getOrderedLayers`) and `tools/ordinal.ts` (`nextLayer`): the **o-order bonus source of layer L is `nextLayer(L, o)`**. Never hand-roll coordinate arithmetic in other modules.
@@ -42,7 +42,10 @@ Full architecture & effect mechanism docs: `docs/面向开发者/` (架构.md, �
 ## Gotchas
 
 ### Numbers
-- **All game numbers use `Decimal` from `break_eternity.js`**. Never use plain JS `number` for player state, costs, or production.
+- **All game numbers use `Decimal` from `break_eternity.js`** (representation, API, cost per op and the design ranges of constants: `docs/面向开发者/数值.md`). Never use plain JS `number` for player state, costs, or production; `number` is only for ids, indices, flags and small counts.
+- **One Decimal op costs on the order of 1 µs** — three orders of magnitude more than a `number` read/write. Avoid recomputing per frame: use a named slot plus its `scope` (see above) instead of doing the math inside formulas.
+- **Decimals are never mutated in place** — always replace the whole value (`player.x = player.x.add(y)`). For that reason `data/player.ts` marks `Decimal.prototype` with Vue's `__v_skip`, so Decimals never go through the reactive proxy (measured: about half the frame time; see 性能.md). Never call in-place mutators (`normalize()`, `fromComponents()`) or write `.mag` directly.
+- Design ranges you may rely on: `player.base` is an integer in 2..10; active layer count is normally ≤ 256; each layer has 4..9 dimensions (take the count from `L.dimensions.length`, not from `DIMENSION_COUNT`); price soft-cap `power > 1`, dimension-production soft-cap `power < 1`. Knowledge-upgrade prices are a special case: constant base, no effect pipeline, no soft cap, independent of `player.base`.
 - Decimals are NOT JSON-serializable. The save system uses `markDecimals` (→ `{$d: "...", $l: layer}`) / `unmarkDecimals` on save/load. Layer-0 Decimals are stored as the exact double string and rebuilt via `fromComponents_noNormalize` — the round-trip is bit-exact (break_eternity's `toString`/`fromString` loses ~1 ulp for `|mag| < 1`).
 
 ### Save system

@@ -25,7 +25,9 @@ export function isChallengeEntered(id: string): boolean {
  * 当前被强制激活的挑战id集合
  * @param currentActive 当前激活列表(缺省读player.activeChallenges;调用方已取过时可直接传入,避免重复读取)
  */
-export function forcedActiveChallengeIds(currentActive: string[] = player.activeChallenges): string[] {
+export function forcedActiveChallengeIds(
+  currentActive: string[] = player.activeChallenges,
+): string[] {
   const res: string[] = []
   for (const id of currentActive) {
     const forced = FORCED_ACTIVE[id]
@@ -43,13 +45,22 @@ export function isChallengeActive(id: string): boolean {
 }
 
 /**
+ * 某id是否为无限挑战
+ * 判据是id约定(无限挑战'ic'+编号,普通挑战'c'+编号):这样"哪些挑战属于无限层"不必引用
+ * logic/challenges的注册表(logic/infinity引用它会形成循环,见docs/面向开发者/架构.md)
+ */
+export function isInfinityChallenge(id: string): boolean {
+  return id.startsWith('ic')
+}
+
+/**
  * 当前激活列表中的无限挑战id
  * 无限挑战互斥,故至多1个;IC的id约定为'ic'+编号(如'ic1'),取前缀即可与普通挑战区分
  */
 export function activeInfinityChallengeIds(
   currentActive: string[] = player.activeChallenges,
 ): string[] {
-  return currentActive.filter((id) => id.startsWith('ic'))
+  return currentActive.filter(isInfinityChallenge)
 }
 
 /**是否有无限挑战正在激活(无限挑战互斥,有则至多1个) */
@@ -71,7 +82,7 @@ export function challengeCompletions(id: string): Decimal {
 export function totalChallengeCompletions(): Decimal {
   let total = new Decimal(0)
   for (const id in player.challenges) {
-    if (id.startsWith('ic')) continue
+    if (isInfinityChallenge(id)) continue
     total = total.add(challengeCompletions(id))
   }
   return total

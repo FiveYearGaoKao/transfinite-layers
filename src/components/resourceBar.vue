@@ -34,6 +34,10 @@ div#resourceBar {
   padding: 6px 12px;
   justify-content: start;
   align-content: start;
+  /*条目多(层级多)时列数会超过容器宽度:横向滚动而不是溢出到视口外*/
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
 div.resItem {
   display: flex;

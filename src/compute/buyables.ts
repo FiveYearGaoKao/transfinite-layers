@@ -6,7 +6,7 @@ import { hasInfinityUpgrade } from './infinity'
 import { initializeDimensions } from '@/data/types'
 import { SOFT_CAP_HEIGHT, SLOT_PRICE_CAP_BASE, SLOT_PRICE_CAP_POWER } from './softCap'
 import { expLinear, floored, powerDoubleExp, powerQuadratic, type Curve } from './curves'
-import { priceCountAnchor, type BuyableItem } from './buying'
+import { priceCountAnchor, purchaseStallsLayer0, type BuyableItem } from './buying'
 import {
   applyTo,
   asSlot,
@@ -20,14 +20,16 @@ import {
 } from './effects'
 
 //------槽位(具名注册,全局唯一;缓存按id命中,禁止在调用点临时构造)------
+//作用域:加速器/加倍器/加速器加成的"等级"与加速器底数只依赖层级(不读ctx.id),故声明为layer——
+//        同一层级的4个维度共用一份缓存(否则每层要按维度各解一次)
 /**加速器底数(1.1;被b13按层加成,故缓存键必须带层级) */
-const SLOT_B11_BASE = defineSlot('b11:base', () => new Decimal(1.1))
+const SLOT_B11_BASE = defineSlot('b11:base', () => new Decimal(1.1), 'layer')
 /**加速器等级(含u3/成就提供的免费等级) */
-const SLOT_B11_AMOUNT = defineSlot('b11:amount', (ctx) => buyableAmount(ctx.pos, 11))
+const SLOT_B11_AMOUNT = defineSlot('b11:amount', (ctx) => buyableAmount(ctx.pos, 11), 'layer')
 /**加倍器底数(2) */
 const SLOT_B12_BASE = defineSlot('b12:base', () => new Decimal(2), 'global')
 /**加倍器等级 */
-const SLOT_B12_AMOUNT = defineSlot('b12:amount', (ctx) => buyableAmount(ctx.pos, 12))
+const SLOT_B12_AMOUNT = defineSlot('b12:amount', (ctx) => buyableAmount(ctx.pos, 12), 'layer')
 /**加倍器价格公式的二次项系数(0.1) */
 const SLOT_B12_QUAD = defineSlot('b12:quad', () => new Decimal(0.1), 'global')
 /**加倍器价格公式的常数项(2) */
@@ -35,7 +37,7 @@ const SLOT_B12_COST_BASE = defineSlot('b12:costBase', () => new Decimal(2), 'glo
 /**加速器加成的基础值(0.02) */
 const SLOT_B13_BASE = defineSlot('b13:base', () => new Decimal(0.02), 'global')
 /**加速器加成等级 */
-const SLOT_B13_AMOUNT = defineSlot('b13:amount', (ctx) => buyableAmount(ctx.pos, 13))
+const SLOT_B13_AMOUNT = defineSlot('b13:amount', (ctx) => buyableAmount(ctx.pos, 13), 'layer')
 /**加速器加成的价格指数(4) */
 const SLOT_B13_COST_MULT = defineSlot('b13:costMult', () => new Decimal(4), 'global')
 
@@ -199,7 +201,10 @@ export function canBuyBuyable(layer: LayerId, id: number): boolean {
   const L = getLayer(layer)
   if (!L) return false
   if (!isUnlocked(layer, id)) return false
-  return L.points.gte(buyableCost(layer, id))
+  const cost = buyableCost(layer, id)
+  if (L.points.lt(cost)) return false
+  //防呆:这次购买会让层级0再也无法产出时直接视为"买不起"(如iu22后的加倍器花光最后1点)
+  return !purchaseStallsLayer0(layer, L.points.sub(cost))
 }
 
 //------效果注册------

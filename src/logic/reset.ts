@@ -58,7 +58,13 @@ function resetDataInner(layer: LayerId, opts: ResetOptions) {
     //无限升级iu31:普通层级重置后保留(当前解锁普通成就总量)的点数
     if (hasInfinityUpgrade('iu31'))
       points = Decimal.max(points, getUnlockedNormalAchievementCount())
+    //必须是min(上限)而不是直接赋值:iu31的"保留N点"若当作"设为N点",则"进入c4后在最高层重开本轮"
+    //会把该层点数凭空刷到N(几乎无损白拿N点),退出挑战的级联重置更会让每一层都白拿N点
     L.points = Decimal.min(L.points, points)
+    //层级0的点数下限恒为1("本轮起点"):点数被花光时必须把它抬回来。
+    //否则层级0既没有产出(维度被清空)也已没有任何重置入口(重开本轮/挑战进出走的都是这里),整档会卡死;
+    //1点必然买得起维度1(维度1价格恒为base^0=1)。a24/iu31只提高上面那个"保留上限",不抬这里。
+    if (isLayer0(layer)) L.points = Decimal.max(L.points, 1)
     L.totalPoints = new Decimal(0)
     L.bestPoints = new Decimal(0)
     L.resetCount = new Decimal(0)
@@ -111,7 +117,7 @@ function doResetInner(
   const gainEnabled = !forced && L?.active == true
   //先算收益并判定重置瞬间成就(须在清空能量/重置下层之前,且不计级联强制重置)
   const gain = gainEnabled ? resetGain(layer) : new Decimal(0)
-  if (gainEnabled) checkResetAchievements(layer, gain)
+  if (gainEnabled) checkResetAchievements({ layer, gain })
   //晋升:重置本层自身进度(强制级联不动自身)
   if (!forced) resetProgress(layer)
   //获得本层级资源

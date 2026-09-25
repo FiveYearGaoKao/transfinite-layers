@@ -6,7 +6,7 @@ import { player } from '@/data/player'
 import { dimensionCost, dimensionItem } from '@/compute/dimensions'
 import { buyableAmount, buyableItem, getBuyable, getBuyables, isUnlocked } from '@/compute/buyables'
 import { canBuyUpgrade, upgradeCost } from '@/compute/upgrades'
-import { type BuyableItem, maxBuyable, sumCost } from '@/compute/buying'
+import { purchaseStallsLayer0, type BuyableItem, maxBuyable, sumCost } from '@/compute/buying'
 import { clearFrameCache } from '@/compute/frameCache'
 import { getLayerOrder } from '@/tools/ordinal'
 
@@ -19,6 +19,7 @@ export function canAfford(layer: LayerId, id: number): boolean {
 
 /**
  * 按预算购买可购买项:计算可买数量并扣除点数
+ * @param allowStall 是否允许"买完本层再无产出"的购买(仅买维度用:买下维度正是恢复产出的手段)
  * @returns 购买数量与花费;买不起/数量为0返回null
  */
 function buyItem(
@@ -26,6 +27,7 @@ function buyItem(
   item: BuyableItem,
   amount: DecimalSource,
   budget?: DecimalSource,
+  allowStall: boolean = false,
 ): { n: Decimal; cost: Decimal } | null {
   const L = getLayer(layer)
   if (!L) return null
@@ -34,6 +36,8 @@ function buyItem(
   if (n.lte(0)) return null
   const cost = sumCost(item, n)
   if (cost.gt(L.points)) return null
+  //防呆:层级0花光点数且本层没有任何维度后就再也没有产出了(见compute/buying的purchaseStallsLayer0)
+  if (!allowStall && purchaseStallsLayer0(layer, L.points.sub(cost))) return null
   L.points = L.points.sub(cost)
   //购买改变了玩家状态:帧内缓存必须立刻失效,否则同一帧后续的价格/产量会读到购买前的值
   clearFrameCache()
@@ -52,7 +56,7 @@ export function buyDimension(
   amount: DecimalSource = 1,
   budget?: DecimalSource,
 ): Decimal {
-  const res = buyItem(layer, dimensionItem(layer, id), amount, budget)
+  const res = buyItem(layer, dimensionItem(layer, id), amount, budget, true)
   if (!res) return new Decimal(0)
   addAmount(layer, id, res.n, 0)
   addAmount(layer, id, res.n, 1)

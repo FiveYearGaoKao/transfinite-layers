@@ -24,6 +24,10 @@ interface FlatRow {
   depth: number
   hasChildren: boolean
 }
+/**该节点的子节点是否值得展开:只有"初始值"一个子节点时展开没有信息(本行已经显示了同一个值) */
+function hasExpandableChildren(n: StatNode): boolean {
+  return n.children.length > 1 || (n.children.length == 1 && n.children[0]!.label != '初始值')
+}
 const flatTree = computed<FlatRow[]>(() => {
   const out: FlatRow[] = []
   const walk = (nodes: StatNode[], depth: number) => {
@@ -34,7 +38,7 @@ const flatTree = computed<FlatRow[]>(() => {
         display: n.text ?? `${n.sign}${format(n.value)}`,
         note: n.note,
         depth,
-        hasChildren: n.children.length > 0,
+        hasChildren: hasExpandableChildren(n),
       })
       if (expanded.has(n.key)) walk(n.children, depth + 1)
     }
@@ -57,9 +61,8 @@ const flatTree = computed<FlatRow[]>(() => {
         <span class="statArrow">{{
           row.hasChildren ? (expanded.has(row.key) ? '▼' : '▶') : '·'
         }}</span
-        >{{ row.label }} {{ row.display }}<span v-if="row.note" class="statNote">
-          ({{ row.note }})</span
-        >
+        >{{ row.label }} {{ row.display
+        }}<span v-if="row.note" class="statNote"> ({{ row.note }})</span>
       </span>
     </div>
   </div>

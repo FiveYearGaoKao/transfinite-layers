@@ -86,6 +86,8 @@ function buyDim(id: number) {
   if (buyMaxMode.value) buyDimensionMax(player.layerSubtab, id)
   else buyDimension(player.layerSubtab, id)
 }
+/**维度表的行数:按所选层级实际拥有的维度数(每层的维度上限可以不同) */
+const dimTableCount = computed(() => selectedLayer.value?.dimensions.length ?? 0)
 /**本层维度id是否自动购买 */
 function dimAutoOn(id: number): boolean {
   return isAutoItem(player.layerSubtab, AUTO_DIMS_ID, id)
@@ -146,7 +148,7 @@ function toggleDimAuto(id: number) {
 
     <br />
     <div id="dimensionTable">
-      <template v-for="i in 4" :key="i">
+      <template v-for="i in dimTableCount" :key="i">
         <div class="cell">
           <span class="text">{{ getLayerName(player.layerSubtab) }}维度{{ i }}</span>
           <span class="text"

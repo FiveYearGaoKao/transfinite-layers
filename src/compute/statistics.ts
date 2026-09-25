@@ -5,7 +5,7 @@
 //- 效果节点按"前值→后值"展示;软上限(cap)额外给出缩减倍率与实际前后值
 import Decimal from 'break_eternity.js'
 import type { LayerId } from '@/data/types'
-import { DIMENSION_COUNT } from '@/data/constants'
+import { getLayer } from '@/access'
 import { layerKey, getLayerOrder } from '@/tools/ordinal'
 import { format } from '@/tools/format'
 import { getBuyables } from './buyables'
@@ -178,8 +178,10 @@ function pointNode(def: ValuePointDef, ctx: EffectContext): StatNode {
 /**所选层级的加成树(按数值点声明的分组派生) */
 export function buildLayerNodes(pos: LayerId): StatNode[] {
   const nodes: StatNode[] = []
+  //维度数按该层实际拥有的维度取(每层层级可以有不同的维度上限,见"数值.md"的常量范围)
+  const dimCount = getLayer(pos)?.dimensions.length ?? 0
   for (const def of statPoints('dimension')) {
-    for (let id = 0; id < DIMENSION_COUNT; id++) nodes.push(pointNode(def, { pos, id }))
+    for (let id = 0; id < dimCount; id++) nodes.push(pointNode(def, { pos, id }))
   }
   for (const def of statPoints('layer')) nodes.push(pointNode(def, { pos, id: 0 }))
   for (const def of statPoints('buyable')) {

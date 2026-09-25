@@ -35,8 +35,13 @@ export function resolveCtx(ctx?: EffectContextInput): EffectContext {
   return { pos: ctx.pos ?? DEFAULT_CONTEXT.pos, id: ctx.id ?? 0 }
 }
 
-/**槽位缓存作用域:global=初始值不依赖层级(缓存键只有id,命中率更高) */
-export type SlotScope = 'global' | 'layer'
+/**
+ * 槽位缓存作用域(决定帧内缓存的键;键越短,同一个值被复用的机会越多)
+ * - 'item'(缺省):值可依赖层级与物品id,键=层级键|物品id
+ * - 'layer':值只依赖层级(不读ctx.id),键=层级键 —— 同一层级的所有维度/物品共用一份
+ * - 'global':值与层级、物品都无关,键为空
+ */
+export type SlotScope = 'global' | 'layer' | 'item'
 
 /**槽位:效果公式中可被调整的参数(底数/指数/等级/阈值/幂次),可被其他效果修饰 */
 export interface EffectSlot {
@@ -104,17 +109,21 @@ const disablers = new Map<string, ((ctx: EffectContext) => boolean)[]>()
  * 注册一个槽位(全局唯一;必须先声明后引用)
  * @param id 槽位唯一名(同时是它接受的修饰目标)
  * @param init 初始值(必须返回Decimal)
- * @param scope 'global'表示初始值不依赖层级(缓存键只有id);缺省'layer'
+ * @param scope 缓存作用域(缺省'item');声明'layer'/'global'等于承诺"值与物品id/层级无关",
+ *              开发构建会在首次解算时用另一个上下文对撞校验
  */
 export function defineSlot(
   id: string,
   init: (ctx: EffectContext) => Decimal,
-  scope: SlotScope = 'layer',
+  scope: SlotScope = 'item',
 ): EffectSlot {
   if (slots.has(id)) throw new Error(`槽位id重复:${id}`)
   const slot: EffectSlot = { id, scope, init }
   slots.set(id, slot)
-  if (import.meta.env.DEV && scope == 'global') checkGlobalSlot(slot)
+  if (import.meta.env.DEV) {
+    if (scope == 'global') checkGlobalSlot(slot)
+    else if (scope == 'layer') checkLayerSlotInit(slot)
+  }
   return slot
 }
 
@@ -136,6 +145,17 @@ function checkGlobalSlot(slot: EffectSlot) {
     const a = slot.init(DEFAULT_CONTEXT)
     const b = slot.init({ pos: [1, 0], id: 3 })
     if (!a.eq(b)) console.error(`[效果]槽位${slot.id}声明为global,但其初始值依赖ctx`)
+  } catch {
+    //求值失败留给运行期报错,这里不掩盖
+  }
+}
+
+/**开发构建校验:声明为layer的槽位不得依赖物品id(用两个不同id求值比较初始值) */
+function checkLayerSlotInit(slot: EffectSlot) {
+  try {
+    const a = slot.init({ pos: DEFAULT_CONTEXT.pos, id: 0 })
+    const b = slot.init({ pos: DEFAULT_CONTEXT.pos, id: 3 })
+    if (!a.eq(b)) console.error(`[效果]槽位${slot.id}声明为layer,但其初始值依赖物品id`)
   } catch {
     //求值失败留给运行期报错,这里不掩盖
   }
@@ -228,6 +248,23 @@ function stepValue(e: RegisteredEffect, ctx: EffectContext, current?: Decimal): 
   return valueWith(e, ctx, base, amount, current)
 }
 
+/**组合一个槽位:初始值 + 注册到该槽位的效果(不走缓存) */
+function composeSlot(s: EffectSlot, c: EffectContext): Decimal {
+  let value = s.init(c)
+  for (const e of getEffects(s.id)) value = applyEffect(e, value, c)
+  return value
+}
+
+/**槽位缓存键:global→空,layer→层级键,item→层级键|物品id */
+function slotKey(s: EffectSlot, c: EffectContext): string {
+  if (s.scope == 'global') return ''
+  const key = layerKey(c.pos)
+  return s.scope == 'layer' ? key : `${key}|${c.id}`
+}
+
+/**开发构建:已对撞校验过"与物品id无关"的layer槽位 */
+const checkedLayerSlots = new Set<string>()
+
 /**
  * 组合一个槽位:初始值上依序应用注册到该槽位的效果
  * 帧内缓存(见compute/frameCache):同一帧内同一个槽位的组合值只算一次。
@@ -239,18 +276,24 @@ function stepValue(e: RegisteredEffect, ctx: EffectContext, current?: Decimal): 
 export function slotValue(slot: EffectSlot | string, ctx?: EffectContextInput): Decimal {
   const s = asSlot(slot)
   const c = resolveCtx(ctx)
-  //global槽位的初始值与层级无关,缓存键只有id(命中率更高)
-  const key = s.scope == 'global' ? '' : `${layerKey(c.pos)}|${c.id}`
-  return frameCachedByObject(
-    s,
-    key,
-    () => {
-      let value = s.init(c)
-      for (const e of getEffects(s.id)) value = applyEffect(e, value, c)
-      return value
-    },
-    `slot:${s.id}`,
-  )
+  const value = frameCachedByObject(s, slotKey(s, c), () => composeSlot(s, c), `slot:${s.id}`)
+  //开发构建:layer槽位的值必须在同一层级内与物品id无关(误标会让不同维度共用错值)
+  if (s.scope == 'layer' && import.meta.env.DEV && !checkedLayerSlots.has(s.id)) {
+    checkedLayerSlots.add(s.id)
+    try {
+      const other: EffectContext = { pos: c.pos, id: c.id == 0 ? 3 : 0 }
+      const fresh = withCacheBypass(() => composeSlot(s, other))
+      if (!fresh.eq(value)) {
+        console.error(
+          `[效果]槽位${s.id}声明为layer,但其值依赖物品id:` +
+            `id=${c.id}为${value},id=${other.id}为${fresh}(应改回item或去掉对ctx.id的依赖)`,
+        )
+      }
+    } catch {
+      //对撞求值失败不影响正常读取(与defineSlot的校验同一取向:留给运行期报错)
+    }
+  }
+  return value
 }
 
 /**该效果在当前上下文下是否生效(未解锁/被挑战禁用都不计入) */

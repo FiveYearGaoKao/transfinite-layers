@@ -25,7 +25,8 @@ import {
   type RegisteredEffect,
 } from './effects'
 import { crossLayerExponentBonus } from './crossLayer'
-import { DIMENSION_COUNT, U1_POINTS_EXPONENT } from '@/data/constants'
+import { purchaseStallsLayer0 } from './buying'
+import { U1_POINTS_EXPONENT } from '@/data/constants'
 
 /**u3额外加速器:本层已购维度总等级×0.2 + 已购升级数量 */
 const FREE_LEVEL_FACTOR = 0.2
@@ -116,7 +117,8 @@ export const UPGRADES: UpgradeDef[] = [
     effectText(layer: LayerId): string {
       let lo = new Decimal(Infinity)
       let hi = new Decimal(0)
-      for (let i = 0; i < DIMENSION_COUNT; i++) {
+      //维度数按该层实际拥有的维度取
+      for (let i = 0; i < (getLayer(layer)?.dimensions.length ?? 0); i++) {
         const v = dimensionAmount(layer, i, 1).add(1)
         lo = Decimal.min(lo, v)
         hi = Decimal.max(hi, v)
@@ -240,7 +242,7 @@ export function isUnlocked(layer: LayerId, id: number): boolean {
   if (!def) return true
   return def.isUnlocked?.(layer) ?? true
 }
-/**判断某升级能否购买(未购买、已解锁、前置已购买、点数足够) */
+/**判断某升级能否购买(未购买、已解锁、前置已购买、点数足够且不会让层级0卡死) */
 export function canBuyUpgrade(layer: LayerId, id: number): boolean {
   const def = getUpgrade(id)
   if (!def) return false
@@ -249,7 +251,10 @@ export function canBuyUpgrade(layer: LayerId, id: number): boolean {
   if (hasUpgrade(layer, id)) return false
   if (!isUnlocked(layer, id)) return false
   if (def.requires?.some((r) => !hasUpgrade(layer, r))) return false
-  return L.points.gte(upgradeCost(layer, id))
+  const cost = upgradeCost(layer, id)
+  if (L.points.lt(cost)) return false
+  //防呆:这次购买会让层级0再也无法产出时直接视为"买不起"(见compute/buying的purchaseStallsLayer0)
+  return !purchaseStallsLayer0(layer, L.points.sub(cost))
 }
 
 //------效果注册------

@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { getLayer } from '@/access'
+import { getLayer, getOrderedLayers } from '@/access'
 import { getLayerOrder, isLayer0 } from '@/tools/ordinal'
 import { getBuyables } from '@/compute/buyables'
 import { getUpgrades } from '@/compute/upgrades'
 import { renderLayerPlaceholders } from '@/compute/effects'
 import { hasKnowledge } from '@/compute/knowledge'
-import { DIMENSION_COUNT } from '@/data/constants'
 import type {
   AutoBuyConfig,
   AutoConfig,
@@ -62,6 +61,10 @@ const allAutoOn = computed(() => isAllAutoActive())
 const layerAutoOn = computed(() => isLayerAutoActive(selectedPos.value))
 /**当前层维度数量 */
 const dimCount = computed(() => getLayer(selectedPos.value)?.dimensions.length ?? 0)
+/**所有活跃层级中最大的维度数量(全局配置模板要能覆盖到每一层的维度;各层维度上限可以不同) */
+const maxDimCount = computed(() =>
+  getOrderedLayers('asc').reduce((m, e) => Math.max(m, e.L.dimensions.length), 0),
+)
 /**当前层可购买列表 */
 const buyableList = computed(() => getBuyables(getLayerOrder(selectedPos.value)))
 /**当前层升级列表(升级自动化用) */
@@ -106,7 +109,7 @@ const visibleDefs = computed(() => {
 /**某类型卡片的逐项列表(维度/可购买/升级;全局模式以order 0为准;name为按钮文字,title为悬浮说明) */
 function cardItems(def: AutomationDef): { id: number; name: string; title?: string }[] {
   if (def.id == AUTO_DIMS_ID) {
-    const n = view.value == 'global' ? DIMENSION_COUNT : dimCount.value
+    const n = view.value == 'global' ? maxDimCount.value : dimCount.value
     return Array.from({ length: n }, (_, i) => ({ id: i, name: `维度${i + 1}` }))
   }
   if (def.id == AUTO_BUYABLES_ID) {

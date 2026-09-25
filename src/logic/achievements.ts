@@ -6,6 +6,7 @@ import {
   dimensionAmount,
   getEnergy,
   getLayer,
+  getOrderedLayers,
   getPoints,
   hasAchievement,
   hasAnyUpgrade,
@@ -34,8 +35,8 @@ import { clearFrameCache } from '@/compute/frameCache'
 /**成就"逆流而上"(a41)的衰减速度槽位(默认1;无限升级iu21降为1/60) */
 const SLOT_A41_DECAY = defineSlot('a41:decay', () => new Decimal(1), 'global')
 
-/**成就定义 */
-export interface AchievementDef {
+/**成就的公共字段 */
+interface AchievementBase {
   id: string
   name: string
   description: string
@@ -47,11 +48,35 @@ export interface AchievementDef {
   effect?: EffectDef
   /**额外效果的文字说明(tooltip第二行) */
   effectText?: string
-  /**是否达成 */
-  isCompleted(): boolean
-  /**在层L重置取得gain时的判定(仅用于只在重置瞬间成立的成就) */
-  onReset?(layer: LayerId, gain: Decimal): boolean
 }
+
+/**层级重置(晋升)瞬间的判定参数:必须在清空点数/能量之前求值(见logic/reset的doReset) */
+export interface ResetEvent {
+  layer: LayerId
+  gain: Decimal
+}
+/**无限重置瞬间的判定参数(只统计真实重置,强制重置不触发) */
+export interface InfinityResetEvent {
+  gain: Decimal
+}
+
+/**
+ * 成就定义:按"触发时机"分四类,`isCompleted` 的参数由触发时机决定
+ * - 缺省/`'frame'`:每帧检查一次(条件在任何时刻读都成立)
+ * - `'reset'`:层级重置瞬间检查,拿到当层与当次收益(如"1秒内重置""单次获得N点"这类瞬时条件)
+ * - `'infinity'`:无限重置瞬间检查(在删层之前求值)
+ * - `'manual'`:没有可判定的条件,只能由 `unlockAchievementById` 触发(须在别处显式调用)
+ */
+export type AchievementDef =
+  | (AchievementBase & { trigger?: 'frame'; isCompleted(): boolean })
+  | (AchievementBase & { trigger: 'reset'; isCompleted(ev: ResetEvent): boolean })
+  | (AchievementBase & { trigger: 'infinity'; isCompleted(ev: InfinityResetEvent): boolean })
+  | (AchievementBase & { trigger: 'manual' })
+
+/**各触发时机对应的成就类型(分桶用:让桶里 isCompleted 的参数是确定的) */
+type FrameAchievement = Extract<AchievementDef, { trigger?: 'frame' }>
+type ResetAchievement = Extract<AchievementDef, { trigger: 'reset' }>
+type InfinityAchievement = Extract<AchievementDef, { trigger: 'infinity' }>
 
 const normalAchievements: AchievementDef[] = [
   {
@@ -148,8 +173,9 @@ const normalAchievements: AchievementDef[] = [
     description: '在1秒内进行层级1的重置',
     reward: 4,
     effectText: '每层重置后保留1点数',
-    isCompleted: () => false,
-    onReset: (layer) => compareLayer(layer, [1]) == 0 && (getLayer([0])?.resetTime.lt(1) ?? false),
+    trigger: 'reset',
+    isCompleted: ({ layer }) =>
+      compareLayer(layer, [1]) == 0 && (getLayer([0])?.resetTime.lt(1) ?? false),
   },
   {
     id: 'a25',
@@ -170,8 +196,8 @@ const normalAchievements: AchievementDef[] = [
     name: '我需要能量吗',
     description: '在没有层级1能量时一次性获得100层级1点数',
     reward: 8,
-    isCompleted: () => false,
-    onReset: (layer, gain) =>
+    trigger: 'reset',
+    isCompleted: ({ layer, gain }) =>
       compareLayer(layer, [1]) == 0 && getEnergy([1]).eq(0) && gain.gte(100),
     effect: {
       target: 'energy:base',
@@ -232,8 +258,8 @@ const normalAchievements: AchievementDef[] = [
     name: '我需要重置吗',
     description: '第1次层级1重置获得10000点数',
     reward: 15,
-    isCompleted: () => false,
-    onReset: (layer, gain) =>
+    trigger: 'reset',
+    isCompleted: ({ layer, gain }) =>
       compareLayer(layer, [1]) == 0 && (getLayer([1])?.resetCount.eq(0) ?? false) && gain.gte(1e4),
   },
   {
@@ -335,6 +361,7 @@ const normalAchievements: AchievementDef[] = [
     description: '在挑战4中购买不该买的东西导致挑战失败',
     reward: 1,
     isCompleted: () => {
+      if (!isChallengeActive('c4')) return false
       const L = getLayer([0])
       if (!L) return false
       //简单判定:层级0当前点数买不起任何维度,且所有维度数量=0
@@ -463,7 +490,9 @@ const normalAchievements: AchievementDef[] = [
     name: '我需要层级吗',
     description: '不解锁其它层级进行无限重置',
     reward: 100,
-    isCompleted: () => false,
+    trigger: 'infinity',
+    //无限重置只保留层级0,故"只解锁过层级0"等价于此时层级表里只有层级0(判定在删层之前)
+    isCompleted: () => getOrderedLayers('asc').length == 1,
   },
   {
     id: 'a66',
@@ -482,6 +511,7 @@ const normalAchievements: AchievementDef[] = [
 ]
 
 //------隐藏成就:较难获取,未解锁时名称作为提示,描述显示"???";奖励固定1知识------//
+//s11/s14/s15/s16没有可判定的条件,只能由触发那一处的代码调用unlockAchievementById
 const secretAchievements: AchievementDef[] = [
   {
     id: 's11',
@@ -489,7 +519,7 @@ const secretAchievements: AchievementDef[] = [
     description: '点击滚动新闻中的rickroll超链接',
     secret: true,
     reward: 1,
-    isCompleted: () => false,
+    trigger: 'manual',
   },
   {
     id: 's12',
@@ -513,7 +543,7 @@ const secretAchievements: AchievementDef[] = [
     description: '随机到问题"1 + 1"并回答错误',
     secret: true,
     reward: 1,
-    isCompleted: () => false,
+    trigger: 'manual',
   },
   {
     id: 's15',
@@ -521,7 +551,7 @@ const secretAchievements: AchievementDef[] = [
     description: '尝试导入修改过的存档',
     secret: true,
     reward: 1,
-    isCompleted: () => false,
+    trigger: 'manual',
   },
   {
     id: 's16',
@@ -529,7 +559,7 @@ const secretAchievements: AchievementDef[] = [
     description: '连续切换主题100次,相邻两次间隔不超过1秒',
     secret: true,
     reward: 1,
-    isCompleted: () => false,
+    trigger: 'manual',
   },
 ]
 
@@ -539,6 +569,7 @@ export function registerAchievement(def: AchievementDef) {
   const e = achievementEffect(def)
   if (e) registerEffect(e)
   registerNormalAchievement(def.id)
+  addToBucket(def)
 }
 
 /**获取所有成就(普通+隐藏) */
@@ -588,27 +619,48 @@ function achievementEffect(def: AchievementDef): RegisteredEffect | undefined {
   }
 }
 
-//自动注册各成就的数值效果,并登记普通成就id
+/**按触发时机分桶:帧循环只遍历frame那批,重置/无限重置各只遍历自己那批 */
+const frameAchievements: FrameAchievement[] = []
+const resetAchievements: ResetAchievement[] = []
+const infinityAchievements: InfinityAchievement[] = []
+
+/**把成就登记到它声明的触发时机对应的桶里(manual不参与任何自动检查,只能由unlockAchievementById触发) */
+function addToBucket(def: AchievementDef) {
+  if (def.trigger == 'reset') resetAchievements.push(def)
+  else if (def.trigger == 'infinity') infinityAchievements.push(def)
+  else if (def.trigger != 'manual') frameAchievements.push(def)
+}
+
+//自动注册各成就的数值效果,并登记普通成就id与触发时机分桶
 for (const a of normalAchievements) {
   const e = achievementEffect(a)
   if (e) registerEffect(e)
   registerNormalAchievement(a.id)
+  addToBucket(a)
 }
 for (const a of secretAchievements) {
   const e = achievementEffect(a)
   if (e) registerEffect(e)
+  addToBucket(a)
 }
 
-/**检查所有未解锁成就，达成则解锁并获得知识奖励 */
+/**检查所有"每帧"成就,达成则解锁并获得知识奖励 */
 export function updateAchievements() {
-  for (const def of getAchievements()) {
+  for (const def of frameAchievements) {
     if (!player.achievements.includes(def.id) && def.isCompleted()) unlockAchievement(def)
   }
 }
 
-/**检查所有重置瞬间成就(在doReset中调用,此时尚未清空能量/重置时间) */
-export function checkResetAchievements(layer: LayerId, gain: Decimal) {
-  for (const def of getAchievements()) {
-    if (!player.achievements.includes(def.id) && def.onReset?.(layer, gain)) unlockAchievement(def)
+/**检查所有"层级重置瞬间"成就(在doReset中调用,此时尚未清空能量/重置时间) */
+export function checkResetAchievements(ev: ResetEvent) {
+  for (const def of resetAchievements) {
+    if (!player.achievements.includes(def.id) && def.isCompleted(ev)) unlockAchievement(def)
+  }
+}
+
+/**检查所有"无限重置瞬间"成就(在doInfinityReset中调用,此时尚未删层) */
+export function checkInfinityResetAchievements(ev: InfinityResetEvent) {
+  for (const def of infinityAchievements) {
+    if (!player.achievements.includes(def.id) && def.isCompleted(ev)) unlockAchievement(def)
   }
 }
