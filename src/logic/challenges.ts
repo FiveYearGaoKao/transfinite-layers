@@ -364,7 +364,9 @@ export function exitChallenge(def: ChallengeDef) {
  * @param resource 目标资源量(通常传入 challengeResource(def))
  */
 export function maxCompletions(def: ChallengeDef, resource: Decimal): Decimal {
-  return maxSatisfying(def.goal, resource, completions(def), goalCountEstimate(def, resource)).add(1)
+  return maxSatisfying(def.goal, resource, completions(def), goalCountEstimate(def, resource)).add(
+    1,
+  )
 }
 
 /**
@@ -566,7 +568,9 @@ const CHALLENGES: ChallengeInput[] = [
         type: 'mul',
         value: (ctx) => {
           const L = getLayer(ctx.pos)
-          return L ? L.resetTime.add(1).pow(challengeCompletions('c5').sqrt().div(2)) : new Decimal(1)
+          return L
+            ? L.resetTime.add(1).pow(challengeCompletions('c5').sqrt().div(2))
+            : new Decimal(1)
         },
         text: '维度产量 x{value}',
       },
@@ -600,22 +604,12 @@ const CHALLENGES: ChallengeInput[] = [
     rewardText: '提升无限点数获取',
   },
   {
-    //IC2:强制视为进入C3和C4(能量衰弱与价格偏移自动生效),另加一条加速器底数惩罚
+    //IC2:强制视为进入C3和C4(能量衰弱与价格偏移自动生效)
     id: 'ic2',
     name: '挑战组合B',
-    description: '挑战期间，C3和C4的惩罚始终生效（能量衰弱、购买视为多买1次），且加速器底数-0.04',
+    description: '挑战期间，C3和C4的惩罚始终生效（能量效果变为对数、购买使价格视为多买1次）',
     layer: 'infinity',
-    goalShape: { a: 80, b: 80 },
-    effects: [
-      {
-        target: 'b11:base',
-        type: 'add',
-        //数值待测试
-        static: true,
-        value: () => new Decimal(-0.04),
-        text: '加速器底数 {value}',
-      },
-    ],
+    goalShape: { a: 80, b: 120 },
     rewardEffects: [
       {
         target: 'b13:amount',

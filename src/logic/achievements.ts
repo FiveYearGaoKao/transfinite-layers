@@ -386,8 +386,7 @@ const normalAchievements: AchievementDef[] = [
     name: '更多能量',
     description: '使层级1提供的能量加成指数>=0.33',
     reward: 50,
-    isCompleted: () =>
-      slotValue('energy:base').gte(0.33),
+    isCompleted: () => slotValue('energy:base').gte(0.33),
   },
   {
     id: 'a54',
@@ -399,9 +398,9 @@ const normalAchievements: AchievementDef[] = [
   {
     id: 'a55',
     name: '挑战掌控者',
-    description: '完成挑战5',
+    description: '完成挑战1至挑战5各至少1次',
     reward: 64,
-    isCompleted: () => challengeCompletions('c5').gte(1),
+    isCompleted: () => ['c1', 'c2', 'c3', 'c4', 'c5'].every((x) => challengeCompletions(x).gte(1)),
   },
   {
     id: 'a56',
@@ -447,7 +446,7 @@ const normalAchievements: AchievementDef[] = [
   },
   {
     id: 'a63',
-    name: '这不简单',
+    name: '这不容易',
     description: '完成无限挑战2',
     reward: 60,
     isCompleted: () => challengeCompletions('ic2').gte(1),

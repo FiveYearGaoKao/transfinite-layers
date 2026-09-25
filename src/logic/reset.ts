@@ -58,7 +58,7 @@ function resetDataInner(layer: LayerId, opts: ResetOptions) {
     //无限升级iu31:普通层级重置后保留(当前解锁普通成就总量)的点数
     if (hasInfinityUpgrade('iu31'))
       points = Decimal.max(points, getUnlockedNormalAchievementCount())
-    L.points = points
+    L.points = Decimal.min(L.points, points)
     L.totalPoints = new Decimal(0)
     L.bestPoints = new Decimal(0)
     L.resetCount = new Decimal(0)

@@ -19,10 +19,10 @@
 
 按初始值来源分两类:
 
-| 类型 | 初始值 | 例子 |
-| ---- | ------ | ---- |
-| 声明型(槽位) | 在数值点注册处声明(`init`) | `b12:base`、`energy:base`、`priceCap:power`、`crossLayer:reward` |
-| 调用型(主数值点) | 由核心公式在读取时传入(`base` 参数) | `dimensionCost`、`production`、`pointsGain`、`infinityGain` |
+| 类型             | 初始值                              | 例子                                                             |
+| ---------------- | ----------------------------------- | ---------------------------------------------------------------- |
+| 声明型(槽位)     | 在数值点注册处声明(`init`)          | `b12:base`、`energy:base`、`priceCap:power`、`crossLayer:reward` |
+| 调用型(主数值点) | 由核心公式在读取时传入(`base` 参数) | `dimensionCost`、`production`、`pointsGain`、`infinityGain`      |
 
 读取 API:
 
@@ -125,13 +125,13 @@ defineEffect('production', {
 
 计划本身就是**有序步骤**,所以求逆就是**逆序折叠**:
 
-| 步骤 | 逆 |
-| ---- | -- |
-| `add` | `out - v` |
-| `mul` | `out / v` |
-| `exp` | `out^(1/v)`(要求 v>0) |
-| `cap` | `softCapValue(out, m, 1/p, h)`(要求 p>0) |
-| `custom` | **不可逆** → 返回 `undefined` |
+| 步骤     | 逆                                       |
+| -------- | ---------------------------------------- |
+| `add`    | `out - v`                                |
+| `mul`    | `out / v`                                |
+| `exp`    | `out^(1/v)`(要求 v>0)                    |
+| `cap`    | `softCapValue(out, m, 1/p, h)`(要求 p>0) |
+| `custom` | **不可逆** → 返回 `undefined`            |
 
 - 参数全部来自槽位,因此 iu52/ic4/c4 等对参数的修改**自动反映到求逆**,调用方不再手传幂次。
 - **可逆性是数值点的可推导属性**:点上只要出现任何 `custom` 步骤,`invertAt` 就返回 `undefined`,调用方退回通用搜索
@@ -220,7 +220,7 @@ for (const u of UPGRADES) {
 其中"强制视为进入"是**零额外效果注册**的关键:例如 IC1 要让 C1+C2 的惩罚始终生效,
 只需在 `access/challengeState.ts` 的 `FORCED_ACTIVE` 里声明 `ic1: ['c1', 'c2']`,
 `isChallengeActive` 便会在这两个 id 上恒返回 true,于是 C1 的加速器禁用、C2 的加倍器禁用与点数减半
-自动生效,无需再注册一份惩罚效果。IC2 同理强制 C3+C4(仅额外注册一条 `b11:base` 惩罚)。
+自动生效,无需再注册一份惩罚效果。IC2 同理强制 C3+C4。
 
 - `FORCED_ACTIVE` 登记在 `access` 层(被 `access`/`compute`/`logic` 共同读取,放 `logic` 会造成循环依赖);
 - `logic/challenges.ts` 注册完挑战后有一条**仅开发构建执行**的交叉校验,防止该表与注册表失配;
@@ -270,13 +270,13 @@ for (const u of UPGRADES) {
 
 数值点声明(`defineValuePoint`)包含:
 
-| 字段 | 作用 |
-| ---- | ---- |
-| `label` | 节点标题(可按上下文变化,如 `维度${id+1}产量`) |
-| `sign` | 总值前的符号(`x`/`+`/`^`/空) |
-| `base(ctx)` | 调用型数值点的"初始值"节点(如产量的 `总量×乘数^指数`、答题冷却的 3600) |
-| `statRoots` | 根的分组:`dimension` 每维度一棵、`buyable` 每可购买一棵、`layer` 每层一棵、`once` 全局一棵 |
-| `statInputs(ctx)` | 公式输入节点(只有真公式需要,如产量的 总量/乘数/指数;`point` 字段会展开该数值点的效果明细) |
+| 字段              | 作用                                                                                       |
+| ----------------- | ------------------------------------------------------------------------------------------ |
+| `label`           | 节点标题(可按上下文变化,如 `维度${id+1}产量`)                                              |
+| `sign`            | 总值前的符号(`x`/`+`/`^`/空)                                                               |
+| `base(ctx)`       | 调用型数值点的"初始值"节点(如产量的 `总量×乘数^指数`、答题冷却的 3600)                     |
+| `statRoots`       | 根的分组:`dimension` 每维度一棵、`buyable` 每可购买一棵、`layer` 每层一棵、`once` 全局一棵 |
+| `statInputs(ctx)` | 公式输入节点(只有真公式需要,如产量的 总量/乘数/指数;`point` 字段会展开该数值点的效果明细)  |
 
 节点渲染:
 

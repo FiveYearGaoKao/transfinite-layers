@@ -12,7 +12,7 @@ const PRICE_CAP_POWER = 2
 /**维度生产软上限的基准阈值 */
 const DIM_CAP_BASE = Number.MAX_VALUE
 /**维度生产软上限的基准幂次 */
-const DIM_CAP_POWER = 0.75
+const DIM_CAP_POWER = 0.8
 /**价格软上限的高度:1=对价格对数做幂次放大(维度生产软上限为0,见compute/dimensions) */
 export const SOFT_CAP_HEIGHT = 1
 

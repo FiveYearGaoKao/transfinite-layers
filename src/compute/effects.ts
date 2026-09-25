@@ -505,7 +505,7 @@ function invertStep(step: ResolvedStep, out: Decimal, ctx: EffectContext): Decim
   if (step.type == 'cap') {
     const power = step.power!
     if (!power.gt(0) || !out.isFinite() || out.lte(0)) return undefined
-    return softCapValue(out, step.threshold!, Decimal.dOne.div(power), step.e!.height ?? 0)
+    return softCapValue(out, step.threshold!, power.recip(), step.e!.height ?? 0)
   }
   if (step.type == 'custom') return undefined
   const v = step.value ?? stepValue(step.e!, ctx, Decimal.dOne)

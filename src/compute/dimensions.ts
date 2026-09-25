@@ -35,7 +35,7 @@ registerEffect({
   type: 'cap',
   threshold: SLOT_DIM_CAP_BASE,
   power: SLOT_DIM_CAP_POWER,
-  height: 0,
+  height: 1,
 })
 
 interface dimensionInfo {
