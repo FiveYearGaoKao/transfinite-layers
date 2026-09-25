@@ -3,6 +3,10 @@
 export const gameName: string = 'TransfiniteLayers'
 /**当前版本号 */
 export const gameVersion: string = 'v0.1.5'
+/**是否为测试版构建(`vite build --mode beta`;测试版是未平衡/未定终局的新内容) */
+export const isBeta: boolean = import.meta.env.VITE_BETA == 'true'
+/**localStorage键前缀(测试版带后缀,故测试版与正式版的存档、设置互不相通) */
+export const storagePrefix: string = gameName + (isBeta ? '-beta' : '')
 /**无限重置的门槛:层级0点数达到 1.79e308(Number.MAX_VALUE,与成就a48同阈值) */
 export const INFINITY_UNLOCK_POINTS: number = Number.MAX_VALUE
 /**无限里程碑im100的被动无限点数速率:每秒获得"最佳无限点数/秒"的该比例 */

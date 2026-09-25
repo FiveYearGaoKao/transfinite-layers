@@ -1,8 +1,12 @@
 name: Deploy to GitHub Pages
 
+#两条线同时发布(见 docs/面向开发者/开发规范.md §三):
+#  main = 正式版 → /transfinite-layers/    beta = 测试版 → /transfinite-layers-beta/
+#Pages只能整站部署,所以两个路径必须放进同一个artifact;因此无论哪条分支被推送,两条都重新构建,
+#否则单独部署测试版会把正式版删掉。
 on:
   push:
-    branches: [main]
+    branches: [main, beta]
   workflow_dispatch:
 
 permissions:
@@ -15,11 +19,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  build-release:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout main
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -30,21 +36,67 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
+      - name: Build release (v0.1.x line)
         run: npm run build
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
         with:
+          name: release
           path: dist
+          retention-days: 1
+
+  build-beta:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout beta
+        uses: actions/checkout@v4
+        with:
+          ref: beta
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build beta (next line)
+        run: npm run build:beta
+
+      - name: Upload beta artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: beta
+          path: dist/transfinite-layers-beta
+          retention-days: 1
 
   deploy:
-    needs: build
+    needs: [build-release, build-beta]
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Download release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: site
+
+      - name: Download beta artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: beta
+          path: site/transfinite-layers-beta
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

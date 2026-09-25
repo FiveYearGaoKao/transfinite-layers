@@ -5,11 +5,9 @@
 //4. 跑一帧后开发构建的static自检不得报警(标错static或漏清缓存会当场暴露)
 //若仓库根目录存在真实存档,会先载入它以覆盖更多生效分支
 //用法:node scripts/run-ts.mjs scripts/checkEffects.ts
-import { readdirSync, readFileSync } from 'node:fs'
 import Decimal from 'break_eternity.js'
 import { getOrderedLayers } from '@/access'
 import { player } from '@/data/player'
-import { importSaveString } from '@/save/save'
 import {
   DEFAULT_CONTEXT,
   applyTo,
@@ -21,26 +19,11 @@ import {
 import { clearFrameCache } from '@/compute/frameCache'
 import { applyChallengePenalties, updateLayers } from '@/logic/update'
 import { buildGlobalNodes, buildLayerNodes } from '@/compute/statistics'
-import { captureErrors, check, relErr, reportChecks } from './helpers'
-//触发各系统的效果注册(与游戏启动时的引用图一致)
-import '@/compute/upgrades'
-import '@/compute/crossLayer'
-import '@/compute/infinity'
-import '@/compute/infinityMilestones'
-import '@/logic/achievements'
-import '@/logic/challenges'
+import { captureErrors, check, loadRealSave, relErr, reportChecks } from './helpers'
 
 const takeErrors = captureErrors()
 
-const saveFile = readdirSync('.').find(
-  (f) => f.startsWith('TransfiniteLayers-') && f.endsWith('.txt'),
-)
-if (saveFile) {
-  const loaded = importSaveString(readFileSync(saveFile, 'utf8').trim())
-  console.log(`  载入真实存档 ${saveFile}:${loaded ? '成功' : '失败(改用初始状态)'}`)
-} else {
-  console.log('  未找到真实存档,使用初始状态')
-}
+loadRealSave()
 const layerCount = getOrderedLayers('asc').length
 console.log(`  层级数 ${layerCount},成就 ${player.achievements.length},无限升级 ${player.infinityUpgrades.length}`)
 

@@ -48,8 +48,9 @@ function reportInvariantErrors() {
 
 /**游戏循环，dt以秒为单位
  * 一帧内顺序(全局三段式):结构阶段→所有层生产→元层tick→元层自动化→所有层自动化→挑战锁定→挑战C5等每帧惩罚→成就检查
+ * 导出供"无头平衡模拟"脚本复用(scripts/sim.ts):模拟必须与真实帧序完全一致,不要在脚本里重抄一遍顺序
  */
-function gameLoop(dt: Decimal) {
+export function gameLoop(dt: Decimal) {
   dt = dt.mul(getPsdSpeed())
   addValue('totalTime', dt)
   //帧首清空帧内缓存(见compute/frameCache):保证本帧读到的软上限阈值/幂次等常量与本帧状态一致

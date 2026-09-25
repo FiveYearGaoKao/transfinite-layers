@@ -5,9 +5,12 @@ import { LOAD_EMPTY, getCurrentSlot, localLoad, localSave, loadSlotChoice } from
 import { handleFailedLoad } from '@/app/saveActions'
 import { seedRng } from '@/save/rng'
 import { player } from '@/data/player'
+import { gameName, gameVersion, isBeta } from '@/data/constants'
 import '@/compute/buyables'
 import '@/meta/infinity'
 import { loadSettings, applyTheme } from '@/app/settings'
+//测试版在标题上标注,避免与正式版混淆(两版不共用存档,见data/constants的storagePrefix)
+document.title = `${gameName} ${gameVersion}${isBeta ? ' 测试版' : ''}`
 loadSettings()
 applyTheme()
 loadSlotChoice()

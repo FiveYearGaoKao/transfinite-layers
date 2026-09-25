@@ -5,12 +5,15 @@
 ```sh
 npm run dev          # dev server (vite)
 npm run build        # type-check → build-only (removes dist/ first)
-npm run type-check   # vue-tsc --build (NOT tsc — .vue files)
-npm run lint         # eslint . --fix
+npm run type-check   # vue-tsc --build (NOT tsc — .vue files; covers src/ and scripts/)
+npm run lint         # eslint . --fix (also lints scripts/)
 npm run format       # prettier --write src/
+npm run check        # all collision-check scripts (pricing/effects/save/achievements)
 ```
 
 **Build order matters**: `build` removes `dist/` with `fs.rmSync`, then runs `type-check` + `build-only` in parallel. Vite config has `build.emptyOutDir: false` — the rm step is manual because of this.
+
+**Two release lines** (`docs/面向开发者/开发规范.md` §三): pushing `main` publishes the stable build to `/transfinite-layers/`, pushing `beta` publishes the test build to `/transfinite-layers-beta/`. `.env.beta` sets `VITE_BETA=true`, which switches `base` and makes `storagePrefix` (`data/constants.ts`) add a `-beta` suffix — the two lines **never share saves or settings**. CI builds both lines into one Pages artifact, so publishing the test line cannot drop the stable one. Bump `gameVersion` + add a `CHANGELOG` entry for every published batch, bug fixes included.
 
 ## Architecture (must follow)
 
@@ -61,6 +64,9 @@ Full architecture & effect mechanism docs: `docs/面向开发者/` (架构.md, �
 - Unused variables: prefix with `_` to suppress ESLint error.
 - `vue/multi-word-component-names` is off.
 
+### Editing files
+- **Never rewrite a repo file through PowerShell** (`Get-Content … | Set-Content`, `… -replace … | Set-Content`, `Out-File`): Windows PowerShell 5.1 reads these files as ANSI, so every Chinese character comes back re-encoded as garbage and the file is silently destroyed. Shell one-liners are fine for read-only commands; to change a file inside the repo use the file tools (`read` / `edit` / `write`) only.
+
 ### UI conventions
 - Button classes come in pairs: **type** (sizing: `subTab`, `prestige`, `buyable`, `upgrade`, `mainTab`, `toggle`) + **state** (color: `selected`, `affordable`, `bought`, `toggle-on`, `toggle-off`, `meta`). All defined in `src/assets/style.css`.
 - Theme colors: use `var(--...)` CSS variables from `:root` / `body.light`. Add new themes by extending the theme cycle in `settings.ts` + adding the corresponding CSS variables.
@@ -72,9 +78,16 @@ Full architecture & effect mechanism docs: `docs/面向开发者/` (架构.md, �
 
 ## Verification (no test framework)
 Small single-file changes: `npm run type-check && npm run lint && npm run build`.
-Pricing / curve / effect-pipeline changes must additionally run the collision-check scripts (they bundle via esbuild and can load a real save if one is present; see `docs/面向开发者/开发规范.md` §二.13):
+Complex changes (pricing/curves, effects & frame cache, save format, achievements, layer structure) must also run the collision-check scripts. `npm run check` runs all of them; pick the matching one when that is enough (the "which change → which script" table is in `docs/面向开发者/开发规范.md` §二.13):
 
 ```sh
-node scripts/run-ts.mjs scripts/checkPricing.ts   # curve sums/inverses vs brute force, maxBuyable vs referee, base-independence
-node scripts/run-ts.mjs scripts/checkEffects.ts   # folded plan vs per-effect evaluation, inversion round-trips, stat tree, static self-check
+npm run check                                     # all of the below
+npm run check:pricing       # curve sums/inverses vs brute force, maxBuyable vs referee, base-independence
+npm run check:effects       # folded plan vs per-effect evaluation, inversion round-trips, stat tree, static self-check
+npm run check:save          # export→import round-trip, checksum tampering, shape pruning, load guards, migration
+npm run check:achievements   # trigger buckets, manual achievements have an unlock site in src/
 ```
+
+Balance/progression changes: `node scripts/run-ts.mjs scripts/sim.ts [minutes] [stepSeconds] [printEvery]` runs the real `gameLoop` headlessly (it loads the real save if one is present) and prints a progress timeline — report before/after runs instead of a guess. Workflow: `docs/面向开发者/测试与平衡.md`.
+
+Scripts are excluded from the build but included in `npm run type-check` (own project: `tsconfig.scripts.json`); shared assertions/bootstrap/fixtures live in `scripts/helpers.ts`, and one-off probes must not be left behind.

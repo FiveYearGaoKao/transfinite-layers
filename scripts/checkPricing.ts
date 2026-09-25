@@ -6,7 +6,6 @@
 //5. 知识升级价格与player.base无关,且与原硬编码公式逐个对得上
 //6. 回归:线性价格"买最大"必须花光预算(旧几何近似会少买约20%)
 //用法:node scripts/run-ts.mjs scripts/checkPricing.ts
-import { readdirSync, readFileSync } from 'node:fs'
 import Decimal from 'break_eternity.js'
 import {
   constantCurve,
@@ -27,9 +26,8 @@ import { maxSatisfying } from '@/tools/bisect'
 import { getOrderedLayers, getPoints } from '@/access'
 import { getLayerOrder } from '@/tools/ordinal'
 import { player } from '@/data/player'
-import { importSaveString } from '@/save/save'
 import { buyKnowledgeUpgrade } from '@/logic/knowledge'
-import { captureErrors, check, relErr, reportChecks, sameCount } from './helpers'
+import { captureErrors, check, loadRealSave, relErr, reportChecks, sameCount } from './helpers'
 
 //开发构建的自检(曲线正逆/和往返等)走console.error,这里把它们变成断言
 const takeErrors = captureErrors()
@@ -122,6 +120,8 @@ for (const f of families) {
     //和→和逆往返(和逆向下取整且带浮点误差,允许±1;幂族是积分近似,容差放宽到10%)
     for (const k of [3, 20, 500]) {
       const parsed = f.curve.sum!(new Decimal(n0), new Decimal(k))
+      check(`${f.name} n0=${n0} k=${k} 求和有定义`, parsed != undefined)
+      if (parsed == undefined) continue
       const back = f.curve.sumInverse!(new Decimal(n0), parsed)
       const tol = f.exact ? 1e-9 : 0.1
       check(
@@ -218,13 +218,9 @@ for (const budget of ['1e5', '1e150', '1e1000', '1e100000']) {
 }
 
 console.log('== 4b. 真实存档下逐层级的买最大(自动化口径) ==')
-const saveFile = readdirSync('.').find(
-  (f) => f.startsWith('TransfiniteLayers-') && f.endsWith('.txt'),
-)
-if (!saveFile) {
-  console.log('  未找到真实存档,跳过')
-} else if (!importSaveString(readFileSync(saveFile, 'utf8').trim())) {
-  console.log('  真实存档载入失败,跳过')
+const realSave = loadRealSave()
+if (!realSave) {
+  console.log('  跳过:没有可用的真实存档')
 } else {
   clearFrameCache()
   let cases = 0
@@ -251,7 +247,7 @@ if (!saveFile) {
       }
     }
   }
-  console.log(`  ${saveFile}:${getOrderedLayers('asc').length} 层级 × 每种物品 × 3 种预算,共 ${cases} 组`)
+  console.log(`  ${realSave}:${getOrderedLayers('asc').length} 层级 × 每种物品 × 3 种预算,共 ${cases} 组`)
 }
 
 console.log('== 5. 知识升级:价格与player.base无关,且与原公式一致 ==')

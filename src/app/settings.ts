@@ -1,6 +1,6 @@
 //设置(纯呈现偏好，独立于存档，存放在localStorage)
 import { reactive } from 'vue'
-import { gameName } from '@/data/constants'
+import { storagePrefix } from '@/data/constants'
 import { unlockAchievementById } from '@/logic/achievements'
 import { type logType } from '@/data/log'
 
@@ -78,7 +78,7 @@ export function defaultSettings(): Settings {
 
 export const settings: Settings = reactive(defaultSettings())
 
-const SETTINGS_KEY = gameName + '-settings'
+const SETTINGS_KEY = storagePrefix + '-settings'
 
 /**从localStorage读取设置 */
 export function loadSettings() {

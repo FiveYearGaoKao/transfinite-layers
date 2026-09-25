@@ -37,6 +37,8 @@ const build = spawnSync(
     '--tsconfig=tsconfig.app.json',
     '--define:import.meta.env.DEV=true',
     '--define:import.meta.env.PROD=false',
+    //脚本一律按正式版跑(测试版构建才会把VITE_BETA置为true,见.env.beta)
+    '--define:import.meta.env.VITE_BETA="false"',
     `--outfile=${outfile}`,
     '--log-level=warning',
   ],

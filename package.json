@@ -11,9 +11,17 @@
     "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && run-p type-check \"build-only {@}\" --",
     "preview": "vite preview",
     "build-only": "vite build",
+    "build:beta": "node -e \"require('fs').rmSync('dist/transfinite-layers-beta',{recursive:true,force:true})\" && run-p type-check \"build-only:beta {@}\" --",
+    "build-only:beta": "vite build --mode beta --outDir dist/transfinite-layers-beta",
     "type-check": "vue-tsc --build",
     "lint": "eslint . --fix",
-    "format": "prettier --write src/"
+    "format": "prettier --write src/",
+    "check": "run-s check:pricing check:effects check:save check:achievements",
+    "check:pricing": "node scripts/run-ts.mjs scripts/checkPricing.ts",
+    "check:effects": "node scripts/run-ts.mjs scripts/checkEffects.ts",
+    "check:save": "node scripts/run-ts.mjs scripts/checkSave.ts",
+    "check:achievements": "node scripts/run-ts.mjs scripts/checkAchievements.ts",
+    "sim": "node scripts/run-ts.mjs scripts/sim.ts"
   },
   "dependencies": {
     "break_eternity.js": "^2.1.2",

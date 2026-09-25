@@ -4,7 +4,7 @@ import { ref } from 'vue'
 import { compressToBase64, decompressFromBase64 } from 'lz-string'
 import { player, type Player, initializeSave } from '@/data/player'
 import { sanitizeMetaAutomations } from '@/logic/metaAutomations'
-import { gameName, gameVersion, EARLIEST_SAVE_TIME, SAVE_SLOT_COUNT } from '@/data/constants'
+import { gameVersion, EARLIEST_SAVE_TIME, SAVE_SLOT_COUNT, storagePrefix } from '@/data/constants'
 import { getLayer, invalidateLayerOrder } from '@/access'
 import { clearTempLayers } from '@/data/temp'
 import { unlockAchievementById } from '@/logic/achievements'
@@ -17,7 +17,7 @@ import { layerKey, posArray } from '@/tools/ordinal'
 import { addLog } from '@/data/log'
 
 //------存档槽位------
-const CURRENT_SLOT_KEY = gameName + '-slot'
+const CURRENT_SLOT_KEY = storagePrefix + '-slot'
 /**当前存档槽位(ref使UI可响应展示) */
 const currentSlot = ref(0)
 
@@ -64,7 +64,7 @@ export function getSlotSummary(slot: number): SlotSummary {
     achievements: 0,
     version: '',
   }
-  const s = localStorage.getItem(gameName + '-save' + slot)
+  const s = localStorage.getItem(storagePrefix + '-save' + slot)
   if (s == null) return res
   try {
     const saveFile = parse(decompressFromBase64(s) || 'null')
@@ -271,11 +271,11 @@ export function getLastSaveProblems(): string[] {
 }
 /**读取某槽位的原始存档字符串(读档失败时用于导出备份;不经序列化,拿到的一定是原先存下的内容) */
 export function getRawSaveString(slot: number = currentSlot.value): string | null {
-  return localStorage.getItem(gameName + '-save' + slot)
+  return localStorage.getItem(storagePrefix + '-save' + slot)
 }
 /**清空某槽位的存档(读档失败后玩家选择"跳过"时用;不影响内存中正在运行的存档) */
 export function clearSlot(slot: number = currentSlot.value) {
-  localStorage.removeItem(gameName + '-save' + slot)
+  localStorage.removeItem(storagePrefix + '-save' + slot)
 }
 
 /**
@@ -286,7 +286,7 @@ export function clearSlot(slot: number = currentSlot.value) {
 export function localSave(slot: number = currentSlot.value): boolean {
   lastSaveProblems = findInvalidValues(player)
   if (lastSaveProblems.length > 0) return false
-  localStorage.setItem(gameName + '-save' + slot, stringify())
+  localStorage.setItem(storagePrefix + '-save' + slot, stringify())
   return true
 }
 /**从本地存储读档,返回结果码(0成功/LOAD_EMPTY该槽位无存档/其余为错误码) */

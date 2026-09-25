@@ -18,7 +18,7 @@ import { temp } from '@/data/temp'
 import { type logType, addLog } from '@/data/log'
 import { doHardReset, doLoad, doSave } from '@/app/saveActions'
 import { unlockAllUi } from '@/logic/knowledge'
-import { gameVersion, gameName } from '@/data/constants'
+import { gameVersion, gameName, isBeta } from '@/data/constants'
 import { CHANGELOG } from '@/data/changelog'
 import { hasKnowledge } from '@/compute/knowledge'
 import { hasInfinityMilestone, infinityPassiveRate } from '@/compute/infinityMilestones'
@@ -371,7 +371,11 @@ const activeLayers = computed(() =>
 
     <div v-if="subtab == 'about'" id="about" class="section">
       <span class="text bold"
-        >版本: <span class="version">{{ gameVersion }}</span></span
+        >版本: <span class="version">{{ gameVersion }}</span
+        ><span v-if="isBeta" class="version"> 测试版</span></span
+      >
+      <span v-if="isBeta" class="text"
+        >这是测试版:新增内容尚未平衡、终局未确定,且与正式版不共用存档。</span
       >
       <div class="section box left">
         <span class="text bold">版本终局(v0.1.0)</span>

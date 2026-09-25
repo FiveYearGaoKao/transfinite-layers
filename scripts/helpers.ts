@@ -1,7 +1,21 @@
-//测试脚本共用的断言与工具(用法见scripts/run-ts.mjs)
+//测试脚本共用的断言、引导与工具(用法见scripts/run-ts.mjs)
 //约定:脚本用check记录断言,最后reportChecks()打印汇总;开发构建的自检走console.error,
 //      用captureErrors()把它们变成断言(否则只会打印、不会让脚本失败)
+//本文件同时负责"游戏引导":导入各系统的注册模块,使脚本拥有与游戏启动相同的注册状态
+import { readdirSync, readFileSync } from 'node:fs'
 import Decimal from 'break_eternity.js'
+import { initializeSave, player } from '@/data/player'
+import { initializeLayer, type LayerId } from '@/data/types'
+import { getLayer, invalidateLayerOrder } from '@/access'
+import { layerKey } from '@/tools/ordinal'
+import { importSaveString } from '@/save/save'
+//触发各系统的效果/成就/挑战注册(均为副作用导入,与app/core.ts的引用图一致)
+import '@/compute/upgrades'
+import '@/compute/crossLayer'
+import '@/compute/infinity'
+import '@/compute/infinityMilestones'
+import '@/logic/achievements'
+import '@/logic/challenges'
 
 let checks = 0
 let failures: string[] = []
@@ -55,4 +69,40 @@ export function reportChecks(): boolean {
   failures = []
   checks = 0
   return ok
+}
+
+/**
+ * 载入仓库根目录下的真实存档(未找到或载入失败时保持当前状态)
+ * 真实存档能让断言覆盖到只在后期才生效的分支
+ * @returns 实际载入的文件名(未载入为空串)
+ */
+export function loadRealSave(): string {
+  const file = readdirSync('.').find(
+    (f) => f.startsWith('TransfiniteLayers-') && f.endsWith('.txt'),
+  )
+  if (!file) {
+    console.log('  未找到真实存档,使用初始状态')
+    return ''
+  }
+  const ok = importSaveString(readFileSync(file, 'utf8').trim())
+  console.log(`  载入真实存档 ${file}:${ok ? '成功' : '失败(改用初始状态)'}`)
+  return ok ? file : ''
+}
+
+/**把内存中的存档恢复为空白存档(构造测试状态前先调用) */
+export function freshSave() {
+  Object.assign(player, initializeSave())
+}
+
+/**
+ * 确保0阶的层级1..slot都存在(构造多层级测试状态用)
+ * 高度按槽位号给(层级n的高度为n),使同一窗口内的高度严格递增
+ */
+export function ensureLayer0Order(slot: number) {
+  for (let i = 1; i <= slot; i++) {
+    const pos: LayerId = [i]
+    if (!getLayer(pos)) player.layers[layerKey(pos)] = initializeLayer(i)
+  }
+  player.layerDepth = Math.max(player.layerDepth, slot + 1)
+  invalidateLayerOrder()
 }
