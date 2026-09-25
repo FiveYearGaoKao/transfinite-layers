@@ -375,8 +375,7 @@ export function maxCompletions(def: ChallengeDef, resource: Decimal): Decimal {
  * 契约:估算只当搜索锚点(见tools/bisect),偏差只影响迭代次数,不影响正确性
  */
 function goalCountEstimate(def: ChallengeDef, resource: Decimal): Decimal | undefined {
-  if (!def.goalCurve) return undefined
-  const index = def.goalCurve.inverse(resource)
+  const index = def.goalCurve?.inverse?.(resource)
   if (index == undefined) return undefined
   return invertAt('challengeGoalIndex', index)
 }
@@ -664,9 +663,16 @@ const CHALLENGES: ChallengeInput[] = [
         text: '维度生产软上限阈值固定为{value}',
       },
       {
-        //强度为原来的平方:价格软上限^2→^4、维度生产软上限^0.75→^(0.75²)
-        //两者参数独立,用targets显式表达"本效果同时作用于这两个数值点"
-        target: ['priceCap:power', 'dimCap:power'],
+        //强度为原来的平方:价格软上限^2→^4、维度生产软上限^0.8→^(0.8²)
+        //两者参数独立,故各注册一条(数值相同的两条效果,统计页会分别显示)
+        target: 'priceCap:power',
+        type: 'exp',
+        static: true,
+        value: () => new Decimal(2),
+        text: '软上限强度 ^{value}',
+      },
+      {
+        target: 'dimCap:power',
         type: 'exp',
         static: true,
         value: () => new Decimal(2),

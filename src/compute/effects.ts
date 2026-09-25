@@ -53,8 +53,8 @@ export type EffectType = 'add' | 'mul' | 'exp' | 'custom' | 'cap'
 
 /**效果声明(定义用,注册时自动补id/name) */
 export interface EffectDef {
-  /**数值点id;数组表示"同一条效果作用于多个数值点"(联动,其数值必须与ctx无关) */
-  target: string | string[]
+  /**数值点id(=修饰目标,一一对应) */
+  target: string
   type: EffectType
   /**加成数值;缺省时mul→base^amount, add→base×amount(需声明base与amount槽位) */
   value?(ctx: EffectContext, base?: Decimal, amount?: Decimal, current?: Decimal): Decimal
@@ -171,11 +171,6 @@ function neutralValue(type: EffectType): Decimal {
   return type == 'add' ? Decimal.dZero : Decimal.dOne
 }
 
-/**效果作用的数值点列表 */
-function targetsOf(e: RegisteredEffect): string[] {
-  return Array.isArray(e.target) ? e.target : [e.target]
-}
-
 /**注册一个效果(id全局唯一) */
 export function registerEffect(e: RegisteredEffect) {
   if (byId.has(e.id)) throw new Error(`效果id重复:${e.id}`)
@@ -183,29 +178,9 @@ export function registerEffect(e: RegisteredEffect) {
     throw new Error(`cap效果${e.id}必须声明threshold与power槽位`)
   }
   byId.set(e.id, e)
-  //注册表变了:已整理的效果模板全部作废(见templateFor)
-  registerVersion++
-  for (const target of targetsOf(e)) {
-    const list = (registered[target] ||= [])
-    list.push(e)
-    list.sort((a, b) => priority(a) - priority(b))
-  }
-  if (import.meta.env.DEV) checkMultiTargetEffect(e)
-}
-
-/**
- * 开发构建校验:作用于多个数值点的效果,其数值必须与ctx无关
- * (否则"联动"名不副实:同一条效果在两个数值点上会算出不同的值)
- */
-function checkMultiTargetEffect(e: RegisteredEffect) {
-  if (targetsOf(e).length < 2) return
-  try {
-    const a = stepValue(e, DEFAULT_CONTEXT)
-    const b = stepValue(e, { pos: [1, 0], id: 3 })
-    if (!a.eq(b)) console.error(`[效果]多目标效果${e.id}的数值依赖ctx,禁止用targets联动`)
-  } catch {
-    //求值失败留给运行期报错,这里不掩盖
-  }
+  const list = (registered[e.target] ||= [])
+  list.push(e)
+  list.sort((a, b) => priority(a) - priority(b))
 }
 
 /**按id在所有目标中查找已注册的效果 */
@@ -283,58 +258,19 @@ function isEffective(e: RegisteredEffect, ctx: EffectContext): boolean {
   return (!e.isActive || e.isActive(ctx)) && !isEffectDisabled(e, ctx)
 }
 
-//------效果模板(注册表变化时整理一次)与效果计划(帧内物化)------
-//为什么分两段:
-//- 模板:相邻的同类"静态"效果可以合并成一步(add求和/mul求积/exp幂次求积),而"哪几条能合并"只取决于注册顺序,
-//        与层级/物品/挑战状态无关 → 只在注册表变化时整理一次(见templateFor)
-//- 计划:生效判定与数值解析依赖上下文(层级/物品id/挑战状态),必须在帧内做;结果按"数值点|层级|物品"缓存
-//效果默认dynamic(每帧重算);标static即承诺"只依赖购买/解锁/层级结构",可进本帧的**效果计划**
+//------效果计划(帧内物化)------
+//计划 = 该数值点在本帧的"生效效果列表 + 折叠后的步骤",按"数值点|层级|物品"缓存
+//生效判定与数值解析依赖上下文(层级/物品id/挑战状态),但一帧内不会变(写状态都必须clearFrameCache)
+//折叠:相邻的同类static效果合并成一步(add求和/mul求积/exp幂次求积);cap与custom恒独立
+//      (前者与任何运算都不可交换且带阈值/幂次,后者是"替换当前值"的语义)
+//效果默认dynamic(每帧重算);标static即承诺"只依赖购买/解锁/层级结构",可进本帧的计划
 
-/**模板中的一段:同类型的一组效果;mode=fold表示帧内把"生效的成员"合成一个数值 */
-interface EffectGroup {
-  type: EffectType
-  /**段内成员(同类型,按优先级顺序);fold段可有多个,each段恒为一个 */
-  members: RegisteredEffect[]
-  /**fold=生效成员合成一步;each=单独成一步(dynamic效果、cap、custom) */
-  mode: 'fold' | 'each'
-}
-
-/**已整理的效果模板(按数值点id) */
-const templates = new Map<string, EffectGroup[]>()
-/**注册版本号:每次registerEffect递增,用于作废已整理的模板 */
-let registerVersion = 0
-/**模板表当前对应的注册版本号 */
-let templateVersion = -1
-
-/**
- * 取某数值点的效果模板(首次调用或注册表变化后整理一次)
- * 整理规则:相邻的同类静态效果合成一段;cap与custom恒独立成段
- * (前者与任何运算都不可交换且带阈值/幂次,后者是"替换当前值"的语义)
- */
-function templateFor(target: string): EffectGroup[] {
-  if (templateVersion != registerVersion) {
-    templates.clear()
-    templateVersion = registerVersion
-  }
-  const hit = templates.get(target)
-  if (hit) return hit
-  const groups: EffectGroup[] = []
-  for (const e of getEffects(target)) {
-    const foldable = e.static == true && e.type != 'cap' && e.type != 'custom'
-    const last = groups[groups.length - 1]
-    if (foldable && last && last.mode == 'fold' && last.type == e.type) last.members.push(e)
-    else groups.push({ type: e.type, members: [e], mode: foldable ? 'fold' : 'each' })
-  }
-  templates.set(target, groups)
-  return groups
-}
-
-/**计划中的一步:类型 + fold段合成值 / each段的效果 / cap段的阈值与幂次 */
+/**计划中的一步:类型 + 折叠段合成值 / 单条效果 / cap段的阈值与幂次 */
 interface ResolvedStep {
   type: EffectType
-  /**fold段生效成员合成的数值;静态的each段(如静态custom)也在此预解析 */
+  /**折叠段生效成员合成的数值;静态的独立段(如静态custom)也在此预解析 */
   value?: Decimal
-  /**each段/cap段对应的效果(读current、cap高度、统计用) */
+  /**独立段/cap段对应的效果(读current、cap高度、统计用) */
   e?: RegisteredEffect
   /**仅cap:已解析的阈值与幂次 */
   threshold?: Decimal
@@ -352,44 +288,52 @@ interface EffectPlan {
 /**计划缓存的宿主(模块级常量) */
 const PLAN_OWNER = { name: 'effectPlan' }
 
-/**帧内物化效果模板:判定生效、合成fold段、解析cap槽位 */
+/**帧内物化:按注册顺序判定生效,并把相邻同类static效果折成一步 */
 function buildPlan(target: string, ctx: EffectContext): EffectPlan {
   const active: RegisteredEffect[] = []
   const steps: ResolvedStep[] = []
-  for (const g of templateFor(target)) {
-    if (g.mode == 'fold') {
-      let value = neutralValue(g.type)
-      for (const e of g.members) {
-        if (!isEffective(e, ctx)) continue
-        active.push(e)
-        const v = stepValue(e, ctx, neutralValue(g.type))
-        recordStaticSample(e, ctx, v)
-        value = g.type == 'add' ? value.add(v) : value.mul(v)
-      }
-      //中性段不产生步骤(与逐条求值等价:加0/乘1不改变结果)
-      if (!value.eq(neutralValue(g.type))) steps.push({ type: g.type, value })
-      continue
-    }
-    const e = g.members[0]!
+  //正在折叠的段(同类型static效果的合成值)
+  let foldType: EffectType | undefined
+  let foldValue = Decimal.dOne
+  //结束当前折叠段:中性段(加0/乘1)不产生步骤,与逐条求值等价
+  const flush = () => {
+    if (foldType == undefined) return
+    if (!foldValue.eq(neutralValue(foldType))) steps.push({ type: foldType, value: foldValue })
+    foldType = undefined
+    foldValue = Decimal.dOne
+  }
+  for (const e of getEffects(target)) {
     if (!isEffective(e, ctx)) continue
     active.push(e)
-    if (e.type == 'cap') {
-      steps.push({
-        type: 'cap',
-        e,
-        threshold: slotValue(e.threshold as EffectSlot | string, ctx),
-        power: slotValue(e.power as EffectSlot | string, ctx),
-      })
-      continue
-    }
-    if (e.static) {
-      const v = stepValue(e, ctx, neutralValue(e.type))
-      recordStaticSample(e, ctx, v)
+    const foldable = e.static == true && e.type != 'cap' && e.type != 'custom'
+    if (!foldable) {
+      flush()
+      if (e.type == 'cap') {
+        steps.push({
+          type: 'cap',
+          e,
+          threshold: slotValue(e.threshold as EffectSlot | string, ctx),
+          power: slotValue(e.power as EffectSlot | string, ctx),
+        })
+        continue
+      }
+      //静态的custom在这里预解析;dynamic留到读取时现算
+      const v = e.static ? stepValue(e, ctx, neutralValue(e.type)) : undefined
+      if (v != undefined) recordStaticSample(e, ctx, v)
       steps.push({ type: e.type, e, value: v })
       continue
     }
-    steps.push({ type: e.type, e })
+    const v = stepValue(e, ctx, neutralValue(e.type))
+    recordStaticSample(e, ctx, v)
+    if (foldType != e.type) {
+      flush()
+      foldType = e.type
+      foldValue = v
+    } else {
+      foldValue = e.type == 'add' ? foldValue.add(v) : foldValue.mul(v)
+    }
   }
+  flush()
   return { active, steps }
 }
 

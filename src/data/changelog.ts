@@ -9,6 +9,7 @@ export const CHANGELOG: { version: string; name?: string; notes: string[] }[] = 
       '调整了部分无限升级的效果',
       '添加了8个成就',
       '对自动购买的性能进行了优化',
+      '修复了知识升级"购买最大"消耗过多的bug.现在购买最大的求和虽然不一定绝对精确，但相对误差不超过1%.',
     ],
   },
   {

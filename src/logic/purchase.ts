@@ -1,38 +1,14 @@
 //购买行为
 import Decimal, { type DecimalSource } from 'break_eternity.js'
 import type { LayerId } from '@/data/types'
-import { addAmount, dimensionAmount, getLayer } from '@/access'
+import { addAmount, getLayer } from '@/access'
 import { player } from '@/data/player'
-import { dimensionCost, dimensionCostAt, dimensionSumEstimate } from '@/compute/dimensions'
-import {
-  buyableAmount,
-  buyableCostAt,
-  buyableSumEstimate,
-  getBuyable,
-  getBuyables,
-  isUnlocked,
-} from '@/compute/buyables'
+import { dimensionCost, dimensionItem } from '@/compute/dimensions'
+import { buyableAmount, buyableItem, getBuyable, getBuyables, isUnlocked } from '@/compute/buyables'
 import { canBuyUpgrade, upgradeCost } from '@/compute/upgrades'
 import { type BuyableItem, maxBuyable, sumCost } from '@/compute/buying'
 import { clearFrameCache } from '@/compute/frameCache'
 import { getLayerOrder } from '@/tools/ordinal'
-
-/**维度作为可购买项 */
-function dimItem(layer: LayerId, id: number): BuyableItem {
-  return {
-    amount: () => dimensionAmount(layer, id, 1),
-    cost: (n) => dimensionCostAt(layer, id, n),
-    sumEstimate: (budget) => dimensionSumEstimate(layer, id, budget),
-  }
-}
-/**可购买作为可购买项 */
-function buyableItem(layer: LayerId, id: number): BuyableItem {
-  return {
-    amount: () => buyableAmount(layer, id),
-    cost: (n) => buyableCostAt(layer, id, n),
-    sumEstimate: (budget) => buyableSumEstimate(layer, id, budget),
-  }
-}
 
 /**判断是否能购买某维度 */
 export function canAfford(layer: LayerId, id: number): boolean {
@@ -76,7 +52,7 @@ export function buyDimension(
   amount: DecimalSource = 1,
   budget?: DecimalSource,
 ): Decimal {
-  const res = buyItem(layer, dimItem(layer, id), amount, budget)
+  const res = buyItem(layer, dimensionItem(layer, id), amount, budget)
   if (!res) return new Decimal(0)
   addAmount(layer, id, res.n, 0)
   addAmount(layer, id, res.n, 1)

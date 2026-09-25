@@ -14,8 +14,7 @@
 
 ### 数值点(ValuePoint)
 
-一个可以"被加成"的数值的标识。**数值点的 `id` 就是它的修饰目标**,一一对应;不存在"两个数值共用一个 target"的写法
-(需要联动时用效果的 `targets: [...]`,见 §六)。
+一个可以"被加成"的数值的标识。**数值点的 `id` 就是它的修饰目标**,一一对应;不存在"两个数值共用一个 target"的写法。
 
 按初始值来源分两类:
 
@@ -39,7 +38,7 @@
 
 ```ts
 interface EffectDef {
-  target: string | string[] // 数值点id(数组形式见§六"联动")
+  target: string // 数值点id
   type: 'add' | 'mul' | 'exp' | 'custom' | 'cap'
   value?(ctx, base?, amount?, current?): Decimal // 加成数值
   base?: EffectSlot | string // 可调参数槽位(底数/指数/等级)
@@ -118,7 +117,7 @@ defineEffect('production', {
 
 收益:参数自动进统计页、自动可求逆、自动可被别的效果修饰,并且**阈值/幂次/高度不再是散在函数体里的魔法数字**。
 
-- `height` 是每个 cap 自己的常量:价格软上限 `height=1`、维度生产软上限 `height=0`、挑战目标软上限 `height=0`。
+- `height` 是每个 cap 自己的常量:价格软上限 `height=1`(对价格的对数做幂次放大)、维度生产软上限 `height=1`、挑战目标软上限 `height=0`。
 - 数学实现仍在 `tools/softCap.ts`(纯函数),`cap` 步骤只是它的注册式入口。
 
 ### 通用求逆 `invertAt`
@@ -139,46 +138,56 @@ defineEffect('production', {
 - 因此:**价格类数值点(`dimensionCost`/`buyableCost`)的管道禁止 `custom`**;
   但**槽位**上的 `custom` 是允许的(如 iu22 把 `b12:costBase` 降为 0),它由物品自己的价格公式与反解负责。
 
-## 六、多条效果作用于多个数值点(联动)
+## 六、曲线(Curve):价格公式的正逆与求和同源
 
-`target` 写成数组时,**同一条效果会挂到多个数值点列表里(同一个对象引用,id 仍然唯一)**:
-
-```ts
-defineEffect(['priceCap:power', 'dimCap:power'], { type: 'exp', value: () => new Decimal(2) })
-```
-
-- 单一 id ⇒ 描述、禁用器、统计来源都只有一份;统计页会在两个数值点下都显示它,这正是"耦合点"的可见化。
-- **约束**:`targets` 长度>1 的效果,其数值**必须与 ctx 无关**(开发构建用两个不同 ctx 求值校验,不等即报错)。
-- **禁止**用"共用一个 target"实现联动(那是历史 bug 的来源)。
-
-## 七、曲线(Curve):指数型公式族的正逆同源
-
-价格与挑战目标都形如"以次数为自变量的递增函数",需要**正向公式与反解来自同一份声明**,否则就会出现
-"`dimensionSumEstimate` 重新推导一遍 `base`/`increment`"这种双份维护。
+价格与挑战目标都形如"以次数为自变量的递增函数"。**正向、逆向、求和、和逆必须来自同一份声明**,
+否则会出现"估算函数里重新推导一遍 `base`/`increment`"这种双份维护。
 
 ```ts
 interface Curve {
-  at(n: Decimal, ctx?): Decimal
-  inverse(v: Decimal, ctx?): Decimal | undefined // 不可逆/越界 → undefined
-  ratio?(ctx?): Decimal | undefined // 公比(仅几何级数),用于"总预算→末项预算"折算
+  at(n: Decimal, ctx?): Decimal // 第n项的值
+  inverse?(v: Decimal, ctx?): Decimal | undefined // 值→n(不可逆/越界 → undefined)
+  sum?(n0: Decimal, k: Decimal, ctx?): Decimal | undefined // 从已购n0起买k个的原始总价
+  sumInverse?(n0: Decimal, budget: Decimal, ctx?): Decimal | undefined // 预算→可买数量
 }
 ```
 
-- 数学原语在 `tools/curves.ts`(纯函数,参数已解析),三方法**全部返回 `Decimal`**;
-- 绑定参数来源的糖在 `compute/curves.ts`(`expLinear`/`powerQuadratic`/`powerDoubleExp`,以及把正向取整的 `floored`),
-  底数缺省取 `priceBase()`——那是**全仓库唯一读 `getBase()` 的地方**(升级价格由 `upgradeCost` 传入 `base`);
-- "预算→数量"的估算骨架在 `compute/estimate.ts` 的 `estimateCount`(维度与可购买共用同一份);
-- 曲线是**可选加速声明**:没有解析逆的公式不声明 `curve`,退回 `maxSatisfying` 通用搜索;
-- 公比不是常数的形状**不要声明 `ratio`**(硬套公比只会让锚点更差);
-- 开发构建自检:`inverse(at(n)) ≈ n` 往返一致,正逆不再同源会当场报错。
+四个方法按需声明,缺哪个就退回哪条通用路径(契约不变:**锚点只影响迭代次数,不影响正确性**):
 
-**底数(báse)约束**:
+| 缺什么 | 退回哪里 |
+| ------ | -------- |
+| `inverse`/`sumInverse` | 通用搜索 `maxSatisfying`(见 [性能.md](./性能.md)) |
+| `sum` | 末两项的几何闭式(对公比恒定的价格精确,对已过软上限的价格也足够) |
+
+**族**(`compute/curves.ts`:族工厂与它们的公式放在同一文件——每个族只有这一个消费者):
+
+| 族 | 形状 | 正/逆 | 和 | 使用者 |
+| -- | ---- | ----- | -- | ------ |
+| `constantCurve(c)` | `c` | 无逆 | 精确 | 常量价的知识升级 |
+| `linear({a,b})` | `a + b·n` | 精确 | `Decimal.sumArithmeticSeries`,精确 | 生产增效/答题加速/自动批量 |
+| `geometric({c,r})` | `c·r^n` | 精确 | `Decimal.sumGeometricSeries`,精确 | 超频/博学 |
+| `power({c,a,p})` | `c·(a+n)^p` | 精确 | 积分近似(小k逐项相加)<1% | 预留 |
+| `expLinear({a,b,base?})` | `base^(a + b·n)` | 精确 | 不声明(几何闭式已精确) | 维度价格、加速器价格、挑战目标 |
+| `powerQuadratic({q,c,base?})` | `base^(n(1+q·n)+c)` | 精确 | 不声明(公比极大,末项主导) | 加倍器价格 |
+| `powerDoubleExp({m,base?})` | `base^(2^n·m·base)` | 精确 | 不声明 | 加速器加成价格 |
+
+- **等差/等比的求和与求逆直接用 break_eternity 的 `sumArithmeticSeries`/`sumGeometricSeries`/`affordArithmeticSeries`/`affordGeometricSeries`**
+  (与本项目原手写公式同源);它们对退化参数(公差0、公比1)会算出 `NaN`,所以族里先判参数再调用,
+  退化时 `sumInverse` 返回 `undefined` 让调用方退回通用搜索。`afford*` 的结果是**向下取整**的整数,浮点误差可让它落在 `k-1`,由 `maxBuyable` 的有界修正兜住。
+- 求和口径:相对误差 <1%(常量/线性/几何为精确,幂族用 Euler-Maclaurin 积分近似);`floored` 只把正向取整,和与逆不建模取整。
+- **`maxBuyable` 的两条路**:物品声明了 `sum`/`sumInverse` 就解析求解再在锚点附近做有界修正(±8步),
+  修正不收敛或没声明时退回带锚点的 `maxSatisfying`(见 `compute/buying.ts`)。
+- 开发构建自检:创建曲线时做 `inverse(at(n)) ≈ n` 与 `sum → sumInverse → k` 往返校验(和逆允许±1),正逆/和解不再同源会当场报错。
+
+**底数(base)约束**:
 
 - **价格底数长期等于序数进制**,即"进制缩减 ⇒ 价格与挑战目标同步下降"。
 - 全仓库只有 `compute/curves.ts`(曲线缺省 base)与 `compute/upgrades.ts`(`upgradeCost`)可以读 `getBase()`;物品/目标声明禁止直接调用。
-- **序数进制只取 2~10 的整数**。曲线在 `base ≤ 1` 时 `inverse` 必须返回 `undefined`(函数递减,不可逆),开发构建断言 `getBase() > 1` 且为 2~10 的整数。
+- **与进制无关的价格必须显式给常量底数**(如 `geometric({c,r})`、`expLinear({base:10,…})`):
+  知识升级的价格**不随 `player.base` 变化**,`node scripts/run-ts.mjs scripts/checkPricing.ts` 里有对应断言。
+- **序数进制只取 2~10 的整数**。曲线在 `base ≤ 1` 时 `inverse` 必须返回 `undefined`(函数递减,不可逆),开发构建断言 `getBase()` 为 2~10 的整数。
 
-## 八、自动注册(注册表模式)
+## 七、自动注册(注册表模式)
 
 升级/可购买/成就/知识升级的定义数组里直接写 `effect` 字段,模块加载时循环注册:
 
@@ -202,7 +211,7 @@ for (const u of UPGRADES) {
 | 无限升级      | `iu-{id}`                                    | 已购买(可叠加自定义条件,如 iu32 仅挑战中、iu51 仅层级0) |
 | 无限里程碑    | `im-{id}`                                    | 已解锁(无限重置次数达到该里程碑阈值)                    |
 
-## 九、效果禁用与挑战
+## 八、效果禁用与挑战
 
 `registerEffectDisabler(effectId, fn)` 注册禁用器:fn 返回 true 时该效果被跳过。
 挑战 c1/c2 用它禁用 b11/b12(`buyable-11`/`buyable-12`)。
@@ -240,15 +249,14 @@ for (const u of UPGRADES) {
 - 批量完成用 `invertAt('challengeGoalIndex', …)` 提供 estimate:既把求值次数压下来,
   也越过"不带估算时倍增搜索最多探到 `2^64`"的上限(见 [性能.md](./性能.md) 的 P1)。
 
-## 十、帧内缓存、效果计划与 static
+## 九、帧内缓存、效果计划与 static
 
 帧内缓存的正确性约束见 [性能.md](./性能.md)(唯一权威)。
 
-- **效果模板**:一个数值点的效果按优先级排序后切成若干"段"(`EffectGroup`),相邻的同类静态效果合成一段,
-  `cap`/`custom` 恒独立成段。整理只取决于注册顺序,与层级/物品/挑战状态无关,故**注册表变化时整理一次**
-  (`registerVersion` 作废整表),不再每帧重算。
-- **效果计划**:帧内把模板**物化**一次(`数值点id|层级键|物品id` 缓存):判定生效、把 fold 段的生效成员合成一个数值、
-  解析 `cap` 的阈值/幂次、留下动态效果待读取时现算。读取只做算术,不再重解管线。
+- **效果计划**:帧内把"该数值点的生效效果 + 折叠后的步骤"物化一次(`数值点id|层级键|物品id` 缓存):
+  判定生效、把相邻同类 static 效果折成一个数值、解析 `cap` 的阈值/幂次、留下 dynamic 效果待读取时现算。
+  **折叠只在计划里做一次**(与注册顺序有关,与层级/物品/挑战状态无关),不再单独维护"效果模板"表。
+  读取只做算术,不再重解管线。
 - **静态折叠**:`static: true` 的效果进 fold 段(add求和/mul求积/exp幂次求积);
   段内成员可被单独禁用,合成时只累计生效成员(同类型可交换可结合,故这样合成是精确的)。
   于是 `dimensionMult` 的十来条乘法加成会合成 1 步,只有真正的动态效果仍逐步求值。
@@ -263,7 +271,7 @@ for (const u of UPGRADES) {
   不等就直接点名效果id——**标错 static 会在运行中当场暴露**,不用等玩家发现数值变味。
 - 开发构建可用 `/perf` 指令看每类缓存的命中/未命中与搜索求值次数(判定"缓存有没有用"只看计数)。
 
-## 十一、统计页的加成树
+## 十、统计页的加成树
 
 统计树**完全由数值点声明派生**(`compute/valuePoints.ts` + `compute/statistics.ts` 的通用构建器),
 `statistics.ts` 里没有任何按 target 手写的分支。
@@ -290,21 +298,22 @@ for (const u of UPGRADES) {
 - 效果的参数槽位(`底数`/`数量`/`阈值`/`幂次`)统一由参数槽位列表展开,新增参数类型只需在
   `statistics.ts` 的 `effectParams` 里加一行。
 
-## 十二、新增系统的正确姿势
+## 十一、新增系统的正确姿势
 
 1. 用 `defineValuePoint` 注册数值点(一处声明 id/label/sign/base/statRoots/statInputs)——统计页自动出节点;
 2. 用 `defineSlot` 注册需要的槽位(具名、模块级);
 3. 定义数组里写 `effect` 字段(或直接 `registerEffect`);软上限写 `cap`;
 4. 核心公式里用 `applyTo('target', base, ctx)` 读取,不手写任何加成;
-5. 需要"预算→数量"的闭式锚点时,声明 `curve`(正逆同源);
-6. 数值只依赖购买/解锁/层级结构的加成顺手标 `static: true`(见 §十)。
+5. 价格/目标声明成 `curve`(四件套按需给),并让物品提供 `sum`/`sumInverse`(见 §六);
+6. 数值只依赖购买/解锁/层级结构的加成顺手标 `static: true`(见 §九)。
 
 ### 铁律
 
 1. **任何数值加成都必须经管道注册,禁止把加成烘焙进核心公式。**
 2. **禁止绕过管道直接调 `softCap`/`softCapValue`** 处理玩法数值(它们只作为 `cap` 步骤的实现被调用)。
 3. **禁止在调用点临时构造槽位对象**或手写 `{ pos: [0], id: 0 }`。
-4. **禁止在物品/目标公式里直接读 `getBase()`**(唯一入口见 §七)。
-5. **禁止用"共用一个 target"实现多数值联动**(用 `targets: [...]`,且数值必须与 ctx 无关)。
+4. **禁止在物品/目标公式里直接读 `getBase()`**(唯一入口见 §六);与进制无关的价格必须显式给常量底数。
+5. 一个数值点(一个 id)只有一个含义;**禁止用"共用一个 target"让两个数值共享加成**。
 6. 数值回调**必须返回 `Decimal`**;读取路径禁止再包 `new Decimal(...)`。
-7. **禁止手改统计树结构**;展示不出来的数值点说明它的 `label`/`base`/`statRoots` 没声明。
+7. 价格类数值点的管道**禁止 `custom`**(会让求逆失效);要改价格就改曲线参数的槽位。
+8. **禁止手改统计树结构**;展示不出来的数值点说明它的 `label`/`base`/`statRoots` 没声明。

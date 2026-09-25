@@ -5,7 +5,7 @@ import { c4BoughtOffset, dimensionAmount } from '@/access'
 import { getLayerOrder, isLayer0 } from '@/tools/ordinal'
 import { applyTo, registerEffect } from './effects'
 import { expLinear, floored, type Curve } from './curves'
-import { estimateCount } from './estimate'
+import { priceCountAnchor, type BuyableItem } from './buying'
 import {
   SLOT_DIM_CAP_BASE,
   SLOT_DIM_CAP_POWER,
@@ -28,6 +28,7 @@ registerEffect({
 
 //维度生产软上限:注册在production上的cap效果
 //cap优先级最高,天然在其它产量加成之后生效;阈值与幂次都经槽位(帧内缓存)
+//高度1=对产量的对数做幂次压缩(与价格软上限同形,但阈值/幂次槽位完全独立)
 registerEffect({
   id: 'dimension-softcap',
   name: '维度生产软上限',
@@ -78,24 +79,22 @@ export function dimensionCostBase(layer: LayerId, id: number): Decimal {
 }
 
 /**
- * 维度"在预算内最多能再买多少个"的闭式估算(供maxBuyable做搜索锚点)
- * 骨架见compute/estimate:公比折算 → 价格域求逆(软上限) → 曲线求逆
+ * 维度作为可购买项(供maxBuyable/sumCost使用)
+ * 锚点走compute/buying的priceCountAnchor:预算 →(价格软上限求逆)→ 原始价 →(曲线求逆)→ 数量
  * 契约:估算只当搜索锚点(见tools/bisect),偏差只影响迭代次数,不影响正确性
  */
-export function dimensionSumEstimate(
-  layer: LayerId,
-  id: number,
-  budget: Decimal,
-): Decimal | undefined {
+export function dimensionItem(layer: LayerId, id: number): BuyableItem {
   const info = DIMENSIONS[getLayerOrder(layer)]
-  if (!info) return undefined
-  return estimateCount(
-    info.curve,
-    'dimensionCost',
-    { pos: layer, id },
-    budget,
-    dimensionAmount(layer, id, 1),
-  )
+  const owned = () => dimensionAmount(layer, id, 1)
+  const item: BuyableItem = {
+    amount: owned,
+    cost: (n) => dimensionCostAt(layer, id, n),
+  }
+  if (info) {
+    item.sumInverse = (budget) =>
+      priceCountAnchor(info.curve, 'dimensionCost', { pos: layer, id }, budget, owned())
+  }
+  return item
 }
 
 /**获取某维度的价格 */

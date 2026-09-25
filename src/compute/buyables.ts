@@ -6,7 +6,7 @@ import { hasInfinityUpgrade } from './infinity'
 import { initializeDimensions } from '@/data/types'
 import { SOFT_CAP_HEIGHT, SLOT_PRICE_CAP_BASE, SLOT_PRICE_CAP_POWER } from './softCap'
 import { expLinear, floored, powerDoubleExp, powerQuadratic, type Curve } from './curves'
-import { estimateCount } from './estimate'
+import { priceCountAnchor, type BuyableItem } from './buying'
 import {
   applyTo,
   asSlot,
@@ -177,26 +177,22 @@ export function buyableCost(layer: LayerId, id: number): Decimal {
 }
 
 /**
- * 可购买"在预算内最多能再买多少个"的闭式估算(供maxBuyable做搜索锚点)
- * 骨架见compute/estimate:公比折算 → 价格域求逆(软上限) → 曲线求逆;各物品的价格曲线见上方BUYABLES定义
+ * 可购买作为可购买项(供maxBuyable/sumCost使用)
+ * 锚点走compute/buying的priceCountAnchor:预算 →(价格软上限求逆)→ 原始价 →(曲线求逆)→ 数量
  * 契约:估算只当搜索锚点(见tools/bisect),偏差只影响迭代次数,不影响正确性
- * @param budget 总预算
- * @returns 可购买数量的估算;买不起/不可估算时返回undefined(退回通用搜索)
  */
-export function buyableSumEstimate(
-  layer: LayerId,
-  id: number,
-  budget: Decimal,
-): Decimal | undefined {
+export function buyableItem(layer: LayerId, id: number): BuyableItem {
   const def = getBuyable(id)
-  if (!def) return undefined
-  return estimateCount(
-    def.curve,
-    'buyableCost',
-    { pos: layer, id },
-    budget,
-    buyableAmount(layer, id),
-  )
+  const owned = () => buyableAmount(layer, id)
+  const item: BuyableItem = {
+    amount: owned,
+    cost: (n) => buyableCostAt(layer, id, n),
+  }
+  if (def) {
+    item.sumInverse = (budget) =>
+      priceCountAnchor(def.curve, 'buyableCost', { pos: layer, id }, budget, owned())
+  }
+  return item
 }
 /**判断是否能购买某可购买 */
 export function canBuyBuyable(layer: LayerId, id: number): boolean {

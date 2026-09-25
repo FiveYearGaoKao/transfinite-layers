@@ -10,6 +10,8 @@ import {
 } from '@/access'
 import { temp } from '@/data/temp'
 import { format, formatWhole } from '@/tools/format'
+import { constantCurve, floored, geometric, linear, type Curve } from './curves'
+import type { BuyableItem } from './buying'
 import {
   applyTo,
   effectText,
@@ -28,8 +30,11 @@ export interface KnowledgeUpgradeDef {
   description: string
   /**最大购买数 */
   maxAmount: Decimal
-  /**已购n个时下一个的价格(单位:知识) */
-  cost(n: Decimal): Decimal
+  /**
+   * 价格曲线:第n个的价格(已购n个时下一个的价格)
+   * 常量直接写constantCurve(c);知识价格**不取序数进制**,故与player.base无关
+   */
+  cost: Curve
   /**前置升级,每一项为[升级id, 至少需要的数量] */
   require: [string, Decimal][]
   /**除前置升级外还需满足的额外条件(如点数需求),不满足时升级隐藏 */
@@ -48,7 +53,7 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     category: 'time',
     description: '解锁离线时间和时间扭曲',
     maxAmount: new Decimal(1),
-    cost: () => new Decimal(5),
+    cost: constantCurve(5),
     require: [],
     canBuy: () => true,
   },
@@ -58,7 +63,7 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     category: 'time',
     description: '允许储存离线时间',
     maxAmount: new Decimal(1),
-    cost: () => new Decimal(10),
+    cost: constantCurve(10),
     require: [['time-offline', new Decimal(1)]],
     canBuy: () => true,
   },
@@ -68,7 +73,7 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     category: 'time',
     description: '离线时间可用于加速(稳定提升全局速度)',
     maxAmount: new Decimal(1),
-    cost: () => new Decimal(10),
+    cost: constantCurve(10),
     require: [['time-store', new Decimal(1)]],
     canBuy: () => true,
   },
@@ -78,7 +83,7 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     category: 'time',
     description: '允许主动暂停游戏,暂停期间时间储存为离线时间',
     maxAmount: new Decimal(1),
-    cost: () => new Decimal(5),
+    cost: constantCurve(5),
     require: [['time-store', new Decimal(1)]],
     canBuy: () => true,
   },
@@ -88,7 +93,7 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     category: 'time',
     description: '解锁工具栏的时间流逝1帧按钮',
     maxAmount: new Decimal(1),
-    cost: () => new Decimal(20),
+    cost: constantCurve(20),
     require: [['time-pause', new Decimal(1)]],
     canBuy: () => true,
   },
@@ -98,9 +103,8 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     category: 'time',
     description: '加速倍率升级,每级开放更高倍率(x5/x15/x60)',
     maxAmount: new Decimal(3),
-    cost(n: Decimal): Decimal {
-      return new Decimal(10).pow(n.add(1))
-    },
+    //10^(n+1):显式常量底数,不随序数进制变化
+    cost: geometric({ c: 10, r: 10, label: '超频价格' }),
     require: [['time-boost', new Decimal(1)]],
     canBuy: () => true,
   },
@@ -110,7 +114,7 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     category: 'bonus',
     description: '每个已解锁的普通(非隐藏)成就使所有维度倍率x1.05,效果叠乘',
     maxAmount: new Decimal(1),
-    cost: () => new Decimal(10),
+    cost: constantCurve(10),
     require: [],
     canBuy: () => getUnlockedNormalAchievementCount() >= 10,
     effect: {
@@ -128,9 +132,8 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     category: 'bonus',
     description: '所有维度生产+10%每级,效果叠乘',
     maxAmount: new Decimal(100),
-    cost(n: Decimal): Decimal {
-      return new Decimal(5).add(new Decimal(5).mul(n)).floor()
-    },
+    //5+5n(线性增长:只有线性/几何族的解析和才能把"买最大"算准)
+    cost: linear({ a: 5, b: 5, label: '生产增效价格' }),
     require: [],
     canBuy: () => true,
     effect: {
@@ -147,7 +150,7 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     category: 'bonus',
     description: '同一窗口内最高层级与本层的高度差为d时,本层点数获取x2^d',
     maxAmount: new Decimal(1),
-    cost: () => new Decimal(100),
+    cost: constantCurve(100),
     require: [],
     canBuy: () => hasAchievement('a34'),
     effect: {
@@ -170,7 +173,7 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     category: 'command',
     description: '解锁指令系统和签到指令/checkin',
     maxAmount: new Decimal(1),
-    cost: () => new Decimal(20),
+    cost: constantCurve(20),
     require: [['time-offline', new Decimal(1)]],
     canBuy: () => true,
   },
@@ -180,7 +183,7 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     category: 'command',
     description: '解锁答题指令/quiz',
     maxAmount: new Decimal(1),
-    cost: () => new Decimal(20),
+    cost: constantCurve(20),
     require: [['command-checkin', new Decimal(1)]],
     canBuy: () => true,
   },
@@ -190,9 +193,8 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     category: 'command',
     description: '答题冷却时间x0.9每级,效果叠乘',
     maxAmount: new Decimal(20),
-    cost(n: Decimal): Decimal {
-      return new Decimal(20).add(new Decimal(10).mul(n)).floor()
-    },
+    //20+10n
+    cost: linear({ a: 20, b: 10, label: '答题加速价格' }),
     require: [['command-quiz', new Decimal(1)]],
     canBuy: () => true,
     effect: {
@@ -209,9 +211,8 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     category: 'command',
     description: '答题奖励知识x1.5每级,效果叠乘,并提高题目难度',
     maxAmount: new Decimal(15),
-    cost(n: Decimal): Decimal {
-      return new Decimal(50).mul(new Decimal(2).pow(n)).floor()
-    },
+    //50·2^n:显式常量底数(用base=2、a=log2(50)的指数式会因浮点误差在取整后变成49)
+    cost: floored(geometric({ c: 50, r: 2, label: '博学价格' })),
     require: [['quiz-accel', new Decimal(5)]],
     canBuy: () => true,
     effectText(): string {
@@ -224,9 +225,8 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     category: 'auto',
     description: '解锁自动化的"买最大"模式,每级使批量购买数量翻倍',
     maxAmount: new Decimal(10),
-    cost(n: Decimal): Decimal {
-      return new Decimal(10).mul(n.add(1)).floor()
-    },
+    //10+10n
+    cost: linear({ a: 10, b: 10, label: '自动批量价格' }),
     require: [],
     canBuy: () => hasAchievement('a21'),
     effectText() {
@@ -239,7 +239,7 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     category: 'auto',
     description: '解锁层级页"购买模式"开关(买1个/买最大)和"全部最大"按钮(快捷键M)',
     maxAmount: new Decimal(1),
-    cost: () => new Decimal(50),
+    cost: constantCurve(50),
     require: [['auto-batch', new Decimal(5)]],
     canBuy: () => true,
   },
@@ -249,7 +249,7 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     category: 'auto',
     description: '解锁自动购买升级机制',
     maxAmount: new Decimal(1),
-    cost: () => new Decimal(50),
+    cost: constantCurve(50),
     require: [['auto-batch', new Decimal(1)]],
     canBuy: () => true,
   },
@@ -259,7 +259,7 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     category: 'knowledge',
     description: '每个已解锁的普通成就使知识获取+1%，效果叠加',
     maxAmount: new Decimal(1),
-    cost: () => new Decimal(64),
+    cost: constantCurve(64),
     require: [['bonus-achievement', new Decimal(1)]],
     canBuy: () => true,
     effect: {
@@ -276,7 +276,7 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     category: 'auto',
     description: '解锁自动化全局配置',
     maxAmount: new Decimal(1),
-    cost: () => new Decimal(100),
+    cost: constantCurve(100),
     require: [['auto-upgrade', new Decimal(1)]],
     canBuy: () => true,
   },
@@ -307,7 +307,24 @@ export function hasKnowledge(id: string): boolean {
 export function knowledgeCost(id: string): Decimal {
   const def = getKnowledgeUpgrade(id)
   if (!def) return Decimal.dInf
-  return def.cost(knowledgeAmount(id))
+  return def.cost.at(knowledgeAmount(id))
+}
+
+/**
+ * 知识升级作为可购买项(供maxBuyable/sumCost使用)
+ * 知识价格不经加成管道,故曲线的求和/和逆可直接使用;买最大由此变成精确解
+ */
+export function knowledgeItem(id: string): BuyableItem {
+  const def = getKnowledgeUpgrade(id)
+  const owned = () => knowledgeAmount(id)
+  const item: BuyableItem = {
+    amount: owned,
+    cost: (n) => (def ? def.cost.at(n) : Decimal.dInf),
+  }
+  const curve = def?.cost
+  if (curve?.sum) item.sum = (k) => curve.sum!(owned(), k)
+  if (curve?.sumInverse) item.sumInverse = (budget) => curve.sumInverse!(owned(), budget)
+  return item
 }
 /**某知识升级是否已满级 */
 export function isMaxed(def: KnowledgeUpgradeDef): boolean {

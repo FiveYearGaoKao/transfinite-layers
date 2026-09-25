@@ -20,13 +20,14 @@ Strict unidirectional dependency: `tools → data → save/access → compute �
 - **`logic/` is where mutations happen** (purchases, resets, automations).
 - **`effects.ts` is the central buff pipeline**: every numeric modifier (cost, production, reset gain, soft cap, etc.) goes through `registerEffect`/`applyTo`. New systems MUST register effects here, never bake bonuses into core formulas.
 - **Effect mechanism rules** (full contract: `docs/面向开发者/effect机制.md`):
-  - A value point's `id` **is** its modifier target — one id, one meaning. Never let two meanings share a target (that bug made iu52 weaken the dimension-production soft cap). Need coupled targets? Use `targets: [...]` explicitly, and the effect's value must then be ctx-independent.
+  - A value point's `id` **is** its modifier target — one id, one meaning. Never let two meanings share a target (that bug made iu52 weaken the dimension-production soft cap).
   - Slots are **named and registered** with `defineSlot(id, init)`; never construct a slot object at a call site, never write `{ pos: [0], id: 0 }` (ctx defaults to `pos=[0], id=0`).
   - Numeric callbacks (`init`/`value`/curve methods) **return `Decimal`**; the read path must not re-wrap with `new Decimal(...)`.
   - Soft caps are the `cap` effect type (`threshold`/`power` slots + constant `height`) — never call `softCap`/`softCapValue` from core formulas, and never write a soft cap as `custom` (that makes the value point non-invertible).
   - `applyTo`/`slotValue` results are invertible only while every step is `add`/`mul`/`exp`/`cap`; any `custom` on a price point disables inversion (falls back to `maxSatisfying`).
-  - Price formulas and challenge goals get their base from `getBase()` **only through `compute/curves.ts` / `upgradeCost`** — item and goal declarations must not read `player` directly. `player.base` is an integer in 2..10; a curve's `inverse` must return `undefined` when `base <= 1`.
-- **Frame cache contract** (`compute/frameCache.ts`): per numeric point the frame keeps an **effect plan** (active effect list + folded steps), plus slot values, curve parameters, and the **effect template**. The template — which adjacent same-type `static` effects form one folded segment — depends only on registration order, so it is built once and invalidated by `registerVersion` (bumped in `registerEffect`); the per-frame part is just resolving it. Any write that changes these must call `clearFrameCache()` right after (see `docs/面向开发者/性能.md`). Violating it only yields stale values within the frame, but they will be wrong — dev builds catch it via `runStaticSelfCheck` (called after production and at end of frame in `app/core.ts`). Effects are **dynamic by default** — mark `static` only when the value depends solely on purchases/unlocks/layer structure (never on points, produced amounts, energy or time), and never read `current` from a `static` effect. Use the debug command `/perf` to see cache hit/miss counts and search evaluation counts.
+  - Prices and challenge goals are declared as a `Curve` with four optional methods (`at`/`inverse`/`sum`/`sumInverse`); a missing method falls back to the generic path. Sum accuracy must stay within 1% (`constantCurve`/`linear`/`geometric` are exact, `power` uses an integral approximation, `expLinear`/`powerQuadratic`/`powerDoubleExp` rely on the last-two-terms geometric closed form).
+  - Price formulas and challenge goals get their base from `getBase()` **only through `compute/curves.ts` / `upgradeCost`** — item and goal declarations must not read `player` directly, and prices that must not scale with the ordinal base (knowledge upgrades) must pass an explicit constant base. `player.base` is an integer in 2..10; a curve's `inverse` must return `undefined` when `base <= 1`.
+- **Frame cache contract** (`compute/frameCache.ts`): per numeric point the frame keeps an **effect plan** (active effect list + folded steps, built by folding adjacent same-type `static` effects), plus slot values and curve parameters. Any write that changes these must call `clearFrameCache()` right after (see `docs/面向开发者/性能.md`). Violating it only yields stale values within the frame, but they will be wrong — dev builds catch it via `runStaticSelfCheck` (called after production and at end of frame in `app/core.ts`). Effects are **dynamic by default** — mark `static` only when the value depends solely on purchases/unlocks/layer structure (never on points, produced amounts, energy or time), and never read `current` from a `static` effect. Use the debug command `/perf` to see cache hit/miss counts and search evaluation counts.
 
 Full architecture & effect mechanism docs: `docs/面向开发者/` (架构.md, 层级系统.md, effect机制.md, 存档.md, 开发规范.md, 性能.md). Player-facing guide: `docs/面向玩家/玩法指南.md`.
 
@@ -64,7 +65,13 @@ Full architecture & effect mechanism docs: `docs/面向开发者/` (架构.md, �
 ### Code style
 - **Chinese JSDoc comments above every new function**.
 - **Registry pattern** for all game systems: define an array (`UPGRADES`, `BUYABLES`, `AUTOMATIONS`, achievements), register at module level, query via accessor functions.
-- **Pure functions with no save/effect dependencies go in `tools/`** (e.g. `softCapValue`). Gameplay-aware wrappers (reading effect slots/player state) live in `compute/`.
+- **Pure functions with no save/effect dependencies go in `tools/`** (e.g. `softCapValue`); a pure helper with a single consumer may stay in its owning layer (e.g. the curve families in `compute/curves.ts`). Gameplay-aware wrappers (reading effect slots/player state) live in `compute/`.
 
-## No tests
-This project has no test suite. Verify changes by running `npm run type-check && npm run lint && npm run build`.
+## Verification (no test framework)
+Small single-file changes: `npm run type-check && npm run lint && npm run build`.
+Pricing / curve / effect-pipeline changes must additionally run the collision-check scripts (they bundle via esbuild and can load a real save if one is present; see `docs/面向开发者/开发规范.md` §二.13):
+
+```sh
+node scripts/run-ts.mjs scripts/checkPricing.ts   # curve sums/inverses vs brute force, maxBuyable vs referee, base-independence
+node scripts/run-ts.mjs scripts/checkEffects.ts   # folded plan vs per-effect evaluation, inversion round-trips, stat tree, static self-check
+```

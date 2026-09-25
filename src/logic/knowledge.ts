@@ -7,18 +7,10 @@ import {
   canBuyKnowledgeUpgrade,
   getKnowledgeUpgrade,
   KNOWLEDGE_UPGRADES,
-  knowledgeAmount,
-  type KnowledgeUpgradeDef,
+  knowledgeItem,
 } from '@/compute/knowledge'
-import { maxBuyable, sumCost, type BuyableItem } from '@/compute/buying'
+import { maxBuyable, sumCost } from '@/compute/buying'
 
-/**知识升级作为可购买项(复用统一的购买数量计算) */
-function knowledgeItem(def: KnowledgeUpgradeDef): BuyableItem {
-  return {
-    amount: () => knowledgeAmount(def.id),
-    cost: (n: Decimal) => def.cost(n),
-  }
-}
 /**
  * 购买知识升级
  * @param amount 一次性购买的数量上限,默认1
@@ -27,7 +19,7 @@ function knowledgeItem(def: KnowledgeUpgradeDef): BuyableItem {
 export function buyKnowledgeUpgrade(id: string, amount: DecimalSource = 1): Decimal {
   const def = getKnowledgeUpgrade(id)
   if (!def || !canBuyKnowledgeUpgrade(def)) return new Decimal(0)
-  const item = knowledgeItem(def)
+  const item = knowledgeItem(id)
   const n = Decimal.min(
     Decimal.min(new Decimal(amount), maxBuyable(item, player.knowledge)),
     def.maxAmount.sub(item.amount()),
