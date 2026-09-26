@@ -58,6 +58,7 @@ import {
 import {
   challengeDone,
   challengeGoal,
+  challengeGoalLayer,
   challengeResetTarget,
   challengeResource,
   completions,
@@ -146,6 +147,11 @@ export interface GreedyOptions {
    * 靠它才把下层重新拉起来(人工经验:层级2攒约100点数买出维度3就能打 c1)
    */
   challengePrepareDim: number
+  /**
+   * 进普通挑战前还要求"目标资源层的能量 ≥ 该值"(缺省 1e16=a27 的门槛):
+   * 人工经验:手打进 c1 时层级1能量已略高于 1e16,能量不够时进去只是白扔一轮
+   */
+  challengePrepareEnergy: number
   /**是否主动进挑战:进挑战会强制重置(无限挑战更是直接无限重置),从真实存档继续做实验时可关掉 */
   challenges: boolean
   /**解锁新层级的最低层级0点数:解锁会擦掉本层以下的所有进度,太早解锁等于把刚攒的势头扔掉(0=够条件就解锁) */
@@ -180,6 +186,7 @@ export const GREEDY_DEFAULTS: GreedyOptions = {
   challengeRetry: 1800,
   challengeReady: 10,
   challengePrepareDim: 2,
+  challengePrepareEnergy: 1e16,
   challenges: true,
   //1e100是成就a28(Googol)的阈值,也是挑战页的解锁条件:先拿到挑战再解锁更高层级,否则会把势头擦掉
   unlockGate: 1e100,
@@ -353,6 +360,14 @@ function makeActions(opts: GreedyOptions, hooks: ActionHooks = {}) {
         //所以要先把目标层的维度3(约100点数)买出来,靠它的能量链把下层重新拉起来
         const target = challengeResetTarget(d)
         if (target == undefined || dimensionAmount(target, opts.challengePrepareDim).lte(0))
+          return false
+        //能量门槛:人工手打进 c1 时层级1能量已略高于 a27 的 1e16(能量不够进去只是白扔一轮)
+        const goalLayer = challengeGoalLayer(d)
+        if (
+          opts.challengePrepareEnergy > 0 &&
+          goalLayer != undefined &&
+          getEnergy(goalLayer).lt(opts.challengePrepareEnergy)
+        )
           return false
       }
       const peak = goalPeak.get(d.id)
@@ -550,6 +565,7 @@ export const PHASED_DEFAULTS: PhasedOptions = {
   ...GREEDY_DEFAULTS,
   opening: 'invest',
   openGain: 11,
+  buyAmount: 'fill',
   challengePrepareDim: 2,
   nextLayerGain: 1,
   huntA24: true,
@@ -618,8 +634,8 @@ export function phasedPolicy(opts: PhasedOptions = PHASED_DEFAULTS): BotPolicy {
       if (opts.deliberateA27 && !hasAchievement('a27')) return 0
       return phase == 'layer1Open' ? layer1Resets + 1 : Infinity
     },
-    //开局按"买1个"来(等于人工点击:先维度1、再维度2);之后用fill:先把每个维度买出1个再接"买最大"
-    buyAmount: () => (phase == 'layer1Open' ? 'one' : 'fill'),
+    //开局按"买1个"来(等于人工点击:先维度1、再维度2);之后缺省用fill(先把每个维度买出1个再接买最大)
+    buyAmount: () => (phase == 'layer1Open' ? 'one' : opts.buyAmount),
     spamLayer1: () => hunting(),
     onUnlock(pos, gain) {
       if (compareLayer(pos, [1]) != 0) return
