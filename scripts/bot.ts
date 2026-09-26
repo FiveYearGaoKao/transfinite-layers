@@ -111,7 +111,13 @@ export function installFakeClock(startMs: number = Date.now()): (realSeconds: nu
 export interface GreedyOptions {
   /**层级重置:本次收益 ≥ 当前点数×该倍率 就重置 */
   resetMult: number
-  /**层级重置:超过该秒数且收益至少抵得上当前点数时才重置(防止"没进展也重置"的抖动) */
+  /**
+   * 层级重置:超过该秒数且收益至少抵得上历史最佳时也重置一次(防止"没进展也干等")
+   * 缺省Infinity=从不按停滞放宽,只按resetMult判。实测这条放宽会严重拖慢推进:
+   * 它的条件"收益≥历史最佳"在每次重置后都几乎立刻成立(历史最佳只是上一次的收益),
+   * 于是退化成"一超过上次就重置",层0峰值被反复削平(1小时峰值 e55 → 去掉后 e66);
+   * 真正的"卡死"交给终局判定的停滞检测(见测试与平衡.md §5.3),不在这里兜
+   */
   resetTime: number
   /**无限重置:收益达到该IP值才重置 */
   infinityGain: number
@@ -142,7 +148,7 @@ export interface GreedyOptions {
 /**贪心策略默认参数 */
 export const GREEDY_DEFAULTS: GreedyOptions = {
   resetMult: 2,
-  resetTime: 1800,
+  resetTime: Infinity,
   infinityGain: 1,
   challengeTimeout: 600,
   challenges: true,

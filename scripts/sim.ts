@@ -16,6 +16,7 @@
 //  --no-challenges 机器人不主动进挑战(从真实存档继续做实验时用:进挑战会强制重置甚至无限重置)
 //  --unlock-gate=点数 解锁新层级所需的最低层级0点数(缺省1e100=先拿到a28与挑战;填1=一够条件就解锁)
 //  --reset-mult=倍数   层级重置要求"本次收益 ≥ 历史最佳收益×该倍数"(缺省2;调小=重置更频繁)
+//  --reset-time=秒     停滞放宽:超过该秒数且收益不低于历史最佳就重置(缺省1800;0=从不放宽,只按倍率判)
 //  --verbose  每行指标快照后附上各层级状态(诊断用)
 //策略与口径见 docs/面向开发者/测试与平衡.md
 import { format, formatTime, formatWhole } from '@/tools/format'
@@ -52,6 +53,8 @@ const bot = flag('bot') ?? (has('bot') ? 'phased' : 'none')
 const maxStep = Number(flag('max-step') ?? 60)
 const unlockGate = Number(flag('unlock-gate') ?? 0)
 const resetMult = Number(flag('reset-mult') ?? 0)
+const resetTimeArg = flag('reset-time')
+const resetTime = resetTimeArg == undefined ? undefined : Number(resetTimeArg)
 const opening = flag('opening') == 'fast' ? 'fast' : 'invest'
 const openGain = Number(flag('open-gain') ?? 0)
 const huntDt = Number(flag('hunt-dt') ?? 0)
@@ -63,6 +66,9 @@ function makePolicy(): BotPolicy {
     challenges: !has('no-challenges'),
     unlockGate: unlockGate > 0 ? unlockGate : GREEDY_DEFAULTS.unlockGate,
     resetMult: resetMult > 0 ? resetMult : GREEDY_DEFAULTS.resetMult,
+    //0=从不按"停滞"放宽(只按收益倍率判),其余按给定秒数
+    resetTime:
+      resetTime == undefined ? GREEDY_DEFAULTS.resetTime : resetTime > 0 ? resetTime : Infinity,
     buyAmount,
   }
   if (bot == 'none') return nonePolicy()
