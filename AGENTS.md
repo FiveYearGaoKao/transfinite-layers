@@ -13,7 +13,7 @@ npm run check        # all collision-check scripts (pricing/effects/save/achieve
 
 **Build order matters**: `build` removes `dist/` with `fs.rmSync`, then runs `type-check` + `build-only` in parallel. Vite config has `build.emptyOutDir: false` — the rm step is manual because of this.
 
-**Two release lines** (`docs/面向开发者/开发规范.md` §三): pushing `main` publishes the stable build to `/transfinite-layers/`, pushing `beta` publishes the test build to `/transfinite-layers-beta/`. `.env.beta` sets `VITE_BETA=true`, which switches `base` and makes `storagePrefix` (`data/constants.ts`) add a `-beta` suffix — the two lines **never share saves or settings**. CI builds both lines into one Pages artifact, so publishing the test line cannot drop the stable one. Bump `gameVersion` + add a `CHANGELOG` entry for every published batch, bug fixes included.
+**Two release lines** (`docs/面向开发者/开发规范.md` §三): pushing `main` publishes the stable build at the site root (`/<repo>/`); pushing `beta` builds with `.env.beta` (`VITE_BETA=true`) and publishes the test build to the subdirectory `/<repo>/beta/`. The beta `base` in `vite.config.ts` must match that subdirectory exactly (one level off means every asset 404s and the page is blank). CI always builds both branches with explicit `ref`s into one Pages artifact, so a single push never drops the other line. The two lines **never share saves or settings** (`storagePrefix` in `data/constants.ts` adds `-beta`). Bump `gameVersion` + add a `CHANGELOG` entry for every published batch, bug fixes included.
 
 ## Architecture (must follow)
 

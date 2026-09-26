@@ -1,9 +1,9 @@
 name: Deploy to GitHub Pages
 
-#两条线同时发布(见 docs/面向开发者/开发规范.md §三):
-#  main = 正式版 → /transfinite-layers/    beta = 测试版 → /transfinite-layers-beta/
-#Pages只能整站部署,所以两个路径必须放进同一个artifact;因此无论哪条分支被推送,两条都重新构建,
-#否则单独部署测试版会把正式版删掉。
+#两条发布线(约定见 docs/面向开发者/开发规范.md §三):
+#  main = 正式版 → /<repo>/          beta = 测试版 → /<repo>/beta/
+#Pages只能整站部署:两个路径必须在同一个artifact里,所以无论推哪条分支都构建两条(用显式ref,
+#手动触发也不会把测试版代码发到正式路径),否则单独部署一条会把另一条删掉。
 on:
   push:
     branches: [main, beta]
@@ -36,7 +36,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build release (v0.1.x line)
+      - name: Build release
         run: npm run build
 
       - name: Upload release artifact
@@ -63,14 +63,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build beta (next line)
+      - name: Build beta
         run: npm run build:beta
 
       - name: Upload beta artifact
         uses: actions/upload-artifact@v4
         with:
           name: beta
-          path: dist/transfinite-layers-beta
+          path: dist/beta
           retention-days: 1
 
   deploy:
@@ -80,6 +80,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      #正式版在站点根、测试版在子目录beta/(与vite.config.ts里beta的base一致)
       - name: Download release artifact
         uses: actions/download-artifact@v4
         with:
@@ -90,7 +91,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: beta
-          path: site/transfinite-layers-beta
+          path: site/beta
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
