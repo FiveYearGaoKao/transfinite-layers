@@ -20,7 +20,7 @@ import {
 } from '@/access'
 import { format, formatTime, formatWhole } from '@/tools/format'
 import { compareLayer, getLayerOrder, isLayer0 } from '@/tools/ordinal'
-import { canBuyUpgrade, getUpgrades } from '@/compute/upgrades'
+import { canBuyUpgrade, getUpgrades, hasUpgrade } from '@/compute/upgrades'
 import { canReset, resetGain } from '@/compute/prestige'
 import {
   canBuyInfinityUpgrade,
@@ -56,12 +56,16 @@ import {
 } from '@/logic/commands'
 import {
   challengeDone,
+  challengeGoal,
+  challengeResetTarget,
+  challengeResource,
   completions,
   enterChallenge,
   exitChallenge,
   getAllChallenges,
   isActive,
   isForcedActive,
+  isInfinityChallenge,
   isUnlocked,
 } from '@/logic/challenges'
 import { applyTimeResources, gameLoop } from '@/app/core'
@@ -123,6 +127,13 @@ export interface GreedyOptions {
   infinityGain: number
   /**挑战最长尝试时间(游戏秒),超时退出并暂时放弃 */
   challengeTimeout: number
+  /**挑战超时后多久可以再试(游戏秒);0=不再试。变强了才值得重试,故不是"一失败就永久放弃" */
+  challengeRetry: number
+  /**
+   * 进挑战前要求"挑战外的目标资源峰值 ≥ 目标×该倍数":
+   * 进/退挑战都会强制重置目标层(连带清空下层),没把握就进去只会白扔一轮
+   */
+  challengeReady: number
   /**是否主动进挑战:进挑战会强制重置(无限挑战更是直接无限重置),从真实存档继续做实验时可关掉 */
   challenges: boolean
   /**解锁新层级的最低层级0点数:解锁会擦掉本层以下的所有进度,太早解锁等于把刚攒的势头扔掉(0=够条件就解锁) */
@@ -150,7 +161,9 @@ export const GREEDY_DEFAULTS: GreedyOptions = {
   resetMult: 2,
   resetTime: Infinity,
   infinityGain: 1,
-  challengeTimeout: 600,
+  challengeTimeout: 1800,
+  challengeRetry: 1800,
+  challengeReady: 10,
   challenges: true,
   //1e100是成就a28(Googol)的阈值,也是挑战页的解锁条件:先拿到挑战再解锁更高层级,否则会把势头擦掉
   unlockGate: 1e100,
@@ -187,6 +200,8 @@ const KNOWLEDGE_PRIORITY = [
 interface ActionHooks {
   /**当前游戏时间(秒);阶段式策略自己维护时间轴,故由它注入 */
   now?(): Decimal
+  /**解锁新层级所需的层级0点数门槛(覆盖GreedyOptions.unlockGate) */
+  unlockGate?(): number
   /**解锁新层级前的额外收益要求(≤1=不额外要求);只对开局的第一次解锁有意义 */
   unlockGain?(): number
   /**层级1重置必须达到的最低收益(0=按普通重置规则);spamLayer1为真时忽略 */
@@ -208,8 +223,10 @@ interface ActionHooks {
  * 贪婪策略与阶段式策略共用同一套动作,区别只在ActionHooks给出的"何时解锁/何时重置"
  */
 function makeActions(opts: GreedyOptions, hooks: ActionHooks = {}) {
-  /**暂时放弃的挑战(超时未完成);解锁新层级后清空重试 */
-  let giveUp = new Set<string>()
+  /**超时的挑战→可以再试的时间(到点后重新尝试:变强了才值得重试,不是一失败就永久放弃) */
+  const giveUp = new Map<string, Decimal>()
+  /**各挑战"挑战外"的目标资源峰值(判断这次进去有没有把握) */
+  const goalPeak = new Map<string, Decimal>()
   let giveUpAtLayers = 0
   let challengeEnteredAt = new Decimal(0)
   let now = new Decimal(0)
@@ -275,7 +292,10 @@ function makeActions(opts: GreedyOptions, hooks: ActionHooks = {}) {
     return false
   }
 
-  /**挑战:优先把没做过的做完,其余反复刷第一个还能做的;超时就退出并暂时放弃 */
+  /**
+   * 挑战:只挑"以前轻松达到过目标"的挑战(进出挑战都会把目标层连带下层全部清空),
+   * 进去后达到目标就退出结算(允许批量时一次结算多次);超时就退出,冷却一段时间再试
+   */
   function actChallenge(): boolean {
     const active = getAllChallenges().find((d) => isActive(d) && !isForcedActive(d))
     if (active) {
@@ -285,13 +305,29 @@ function makeActions(opts: GreedyOptions, hooks: ActionHooks = {}) {
       }
       if (time().sub(challengeEnteredAt).gte(opts.challengeTimeout)) {
         exitChallenge(active)
-        giveUp.add(active.id)
+        giveUp.set(active.id, time().add(opts.challengeRetry))
         return true
       }
       return false
     }
     if (!opts.challenges) return false
-    const candidates = getAllChallenges().filter((d) => isUnlocked(d) && !giveUp.has(d.id))
+    //只考虑普通挑战:无限挑战会强制无限重置(整局重开),不属于"层级2→开挑战"这一段
+    const unlocked = getAllChallenges().filter((d) => !isInfinityChallenge(d) && isUnlocked(d))
+    //在挑战外取样各挑战的目标资源峰值:只有"以前轻松达到过目标"才值得进去
+    for (const d of unlocked) {
+      const peak = goalPeak.get(d.id)
+      const cur = challengeResource(d)
+      if (peak == undefined || cur.gt(peak)) goalPeak.set(d.id, cur)
+    }
+    const candidates = unlocked.filter((d) => {
+      if (giveUp.get(d.id)?.gt(time()) ?? false) return false
+      //进出挑战会把目标层以下的升级全部清掉(forceClearUpgrades):没有上层的"软重置(u9)"接手,
+      //下层点数就只能从1点自己重建,目标在时限内几乎不可能完成 → 白扔一轮,故必须先有u9
+      const target = challengeResetTarget(d)
+      if (target == undefined || !hasUpgrade(target, 9)) return false
+      const peak = goalPeak.get(d.id)
+      return peak != undefined && peak.gte(challengeGoal(d).mul(opts.challengeReady))
+    })
     const target = candidates.find((d) => completions(d).lt(1)) ?? candidates[0]
     if (!target) return false
     enterChallenge(target)
@@ -301,14 +337,16 @@ function makeActions(opts: GreedyOptions, hooks: ActionHooks = {}) {
 
   /**解锁新层级:临时层满足解锁条件时把它重置出来(与手动点击临时层等价) */
   function actUnlockLayer(): boolean {
-    //第一个层级(层级1)不设门槛:它是前期唯一的推进手段;解锁更高层级会擦掉已发展的层,故要等势头够大
-    if (getOrderedLayers('asc').length > 1 && getPoints([0]).lt(opts.unlockGate)) return false
+    //层级0点数门槛:第一个层级(层级1)不设门槛(它是前期唯一的推进手段),更高层级缺省要等unlockGate
+    const layerCount = getOrderedLayers('asc').length
+    const gate = hooks.unlockGate?.() ?? (layerCount > 1 ? opts.unlockGate : 0)
+    if (getPoints([0]).lt(gate)) return false
     const temp = findUnlockableTempLayer()
     if (!temp) return false
     const gain = resetGain(temp)
-    //开局:层级1的解锁本身就是第一次重置,故也要攒到要求的收益(见PhasedOptions.openGain)
+    //收益门槛(开局:层级1的解锁本身就是第一次重置;阶段式:层级2+要求a24与nextLayerGain)
     const need = hooks.unlockGain?.() ?? 0
-    if (need > 1 && gain.lt(need)) return false
+    if (need > 0 && gain.lt(need)) return false
     const unlocked = doReset(temp)
     //与app/uiActions一致:解锁后把视角切到新层级
     if (unlocked) {
@@ -388,12 +426,12 @@ function makeActions(opts: GreedyOptions, hooks: ActionHooks = {}) {
     return acted
   }
 
-  /**按固定顺序跑一轮动作(解锁了新层级说明变强了:放弃过的挑战重新试) */
+  /**按固定顺序跑一轮动作(解锁了新层级说明变强了:超时过的挑战立刻重新试) */
   function run(): boolean {
     const layers = getOrderedLayers('asc').length
     if (layers > giveUpAtLayers) {
       giveUpAtLayers = layers
-      giveUp = new Set()
+      giveUp.clear()
     }
     let acted = false
     const actions = [
@@ -444,6 +482,11 @@ export interface PhasedOptions extends GreedyOptions {
   opening: 'invest' | 'fast'
   /**invest打法下前两次重置要求的最低收益(点数);11=维度1(1点)+维度2(10点)的总价 */
   openGain: number
+  /**
+   * 解锁层级2及以上要求的临时层收益(点数):临时层收益=(下层点数/1e4)^0.25,
+   * 故1点=下层1e4点数(作者路线:"有a24+1e4层级1点数就可以重置了"),可以等更大的收益再重置
+   */
+  nextLayerGain: number
   /**是否做a24支线(层级1重置后开1秒窗口,用小步长抓"1游戏秒内再重置一次") */
   huntA24: boolean
   /**
@@ -471,6 +514,7 @@ export const PHASED_DEFAULTS: PhasedOptions = {
   ...GREEDY_DEFAULTS,
   opening: 'invest',
   openGain: 11,
+  nextLayerGain: 1,
   huntA24: true,
   deliberateA27: false,
   deliberateA35: false,
@@ -514,8 +558,15 @@ export function phasedPolicy(opts: PhasedOptions = PHASED_DEFAULTS): BotPolicy {
 
   const bot = makeActions(opts, {
     now: () => now,
-    //开局:层级1的解锁本身就是第一次重置,故也要攒到要求的收益
-    unlockGain: () => (phase == 'layer0' ? openGain : 0),
+    //解锁层级2及以上不看层级0点数,只看"a24到手 + 临时层收益够"(见unlockGain)
+    unlockGate: () => 0,
+    //开局(层级1):解锁本身就是第一次重置,故也要攒到要求的收益
+    //层级2及以上:a24必做——没有它,层级2一重置就把层级1点数清零,层级2能量加成没有对象可乘
+    unlockGain: () => {
+      if (phase == 'layer0') return openGain
+      if (!hasAchievement('a24')) return Infinity
+      return opts.nextLayerGain
+    },
     //开局:第二次层级1重置同样攒到要求的收益
     layer1Gain: () => {
       if (phase == 'layer1Open') return openGain
@@ -734,6 +785,7 @@ export function runSim(opts: SimOptions): SimResult {
   let layerCount = rows[0]!.layerCount
   let resets = player.infinityResets.toString()
   let prevCompletions = totalChallengeCompletions().toString()
+  let activeChallenges = player.activeChallenges.join(',')
   let achievements = new Set(player.achievements)
   while (elapsed().lt(seconds)) {
     //与mainLoop一致:现实时间累加 → 加速/时间扭曲作用到dt上 → gameLoop(帧内再乘每秒速度)
@@ -764,6 +816,11 @@ export function runSim(opts: SimOptions): SimResult {
     if (nowCompletions != prevCompletions) {
       prevCompletions = nowCompletions
       opts.onEvent?.(`[挑战] t=${t}s 总完成次数=${nowCompletions}`)
+    }
+    const nowActive = player.activeChallenges.join(',')
+    if (nowActive != activeChallenges) {
+      activeChallenges = nowActive
+      opts.onEvent?.(`[挑战] t=${t}s ${nowActive ? `进入/进行中=${nowActive}` : '退出挑战'}`)
     }
     if (player.achievements.length != achievements.size) {
       const fresh = [...player.achievements].filter((id) => !achievements.has(id))

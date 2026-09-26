@@ -6,6 +6,7 @@
 //  --bot      机器人策略:phased=阶段式(缺省,含开局打法与a24支线),greedy=纯贪心,none=挂机观察
 //  --opening  phased策略的开局打法:invest=人工打法(前两次重置攒到11点),fast=多次快速重置
 //  --open-gain=N invest打法要求的前两次重置收益(缺省11;11=维度1的1点+维度2的10点)
+//  --next-gain=N 解锁层级2及以上要求的临时层收益(缺省1=下层1e4点数;看的是层层收益,不是层0点数)
 //  --buy-amount=one|max 每次买1个还是买最大(缺省max;phased的开局阶段固定按one跑)
 //  --no-a24   不做a24支线(不抓"1秒内再重置一次"的窗口)
 //  --a27      做a27支线(到手前不买层级1维度,使层级1能量恒为0);会明显拖慢推进
@@ -57,6 +58,7 @@ const resetTimeArg = flag('reset-time')
 const resetTime = resetTimeArg == undefined ? undefined : Number(resetTimeArg)
 const opening = flag('opening') == 'fast' ? 'fast' : 'invest'
 const openGain = Number(flag('open-gain') ?? 0)
+const nextGain = Number(flag('next-gain') ?? 0)
 const huntDt = Number(flag('hunt-dt') ?? 0)
 const buyAmount: 'one' | 'max' = flag('buy-amount') == 'one' ? 'one' : 'max'
 
@@ -78,6 +80,7 @@ function makePolicy(): BotPolicy {
     ...common,
     opening,
     openGain: openGain > 0 ? openGain : PHASED_DEFAULTS.openGain,
+    nextLayerGain: nextGain > 0 ? nextGain : PHASED_DEFAULTS.nextLayerGain,
     huntA24: !has('no-a24'),
     deliberateA27: has('a27'),
     deliberateA35: has('a35'),
