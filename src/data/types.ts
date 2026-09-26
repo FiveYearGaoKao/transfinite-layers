@@ -87,6 +87,10 @@ export interface AutoResetConfig extends AutoConfig {
   useMult: boolean
   /**重置收益达到当前点数该倍率时触发 */
   mult: Decimal
+  /**幂次:重置收益达到"当前点数的 power 次方"时触发(与"倍率"是各自独立的条件) */
+  usePower: boolean
+  /**幂次条件的次方(power>1 门槛更高=重置更慢;power<1 门槛更低=重置更急) */
+  power: Decimal
 }
 /**某个层级的自动化配置 */
 export interface LayerAutomation {
@@ -125,7 +129,7 @@ export interface MetaAutomationDef<T extends AutoConfig = AutoConfig> {
   name: string
   /**配置形状(决定用哪个配置UI组件) */
   configKind: AutoConfigKind
-  /**配置编辑器里隐藏"倍率"条件(该条件下恒成立时用,如临时层点数恒为0) */
+  /**配置编辑器里隐藏"倍率"与"幂次"两个条件(该上下文里恒成立或恒不成立时用,如临时层点数恒为0) */
   hideMult?: boolean
   /**是否已解锁 */
   isUnlocked(): boolean
@@ -156,6 +160,32 @@ export function defaultAutoReset(): AutoResetConfig {
     point: new Decimal(1),
     useMult: false,
     mult: new Decimal(2),
+    usePower: false,
+    power: new Decimal(1),
+  }
+}
+/**
+ * 补齐自动购买配置的缺失/非法字段(读档、以及从全局模板拷贝时用)
+ * 与 sanitizeAutoReset 同思路:只修正"形状",不改玩家的开关注
+ * @param cfg 原始配置(可能为undefined或结构不全)
+ */
+export function sanitizeAutoBuy(cfg: unknown, priority: number = 1): AutoBuyConfig {
+  const base = defaultAutoBuy(priority)
+  if (cfg == null || typeof cfg != 'object') return base
+  const c = cfg as Partial<AutoBuyConfig>
+  const num = (v: unknown, d: number): number => (typeof v == 'number' && isFinite(v) ? v : d)
+  //perItem:只保留布尔值(损坏档里的非布尔项按未勾选处理)
+  const perItem: Record<number, boolean> = {}
+  if (c.perItem != null && typeof c.perItem == 'object') {
+    for (const [k, v] of Object.entries(c.perItem)) if (typeof v == 'boolean') perItem[Number(k)] = v
+  }
+  return {
+    enabled: typeof c.enabled == 'boolean' ? c.enabled : base.enabled,
+    priority: num(c.priority, base.priority),
+    order: c.order == 'desc' ? 'desc' : base.order,
+    percent: num(c.percent, base.percent),
+    buyAmount: c.buyAmount == 'max' ? 'max' : base.buyAmount,
+    perItem,
   }
 }
 /**
@@ -178,5 +208,16 @@ export function sanitizeAutoReset(cfg: unknown): AutoResetConfig {
     point: dec(c.point, base.point),
     useMult: typeof c.useMult == 'boolean' ? c.useMult : base.useMult,
     mult: dec(c.mult, base.mult),
+    usePower: typeof c.usePower == 'boolean' ? c.usePower : base.usePower,
+    power: dec(c.power, base.power),
   }
+}
+/**
+ * 按配置形状补齐一份自动化配置的缺失字段
+ * 读档兜底(save.ts)与"从全局模板拷贝给新层级"(logic/automations)共用同一个入口,
+ * 避免两处各写一套形状判定——模板里缺字段时新层级会跟着缺(见自动化的全局配置)
+ * @param kind 配置形状:'buy'按自动购买兜底,'reset'按自动重置兜底
+ */
+export function sanitizeAutoConfig(kind: 'buy' | 'reset', cfg: unknown): AutoConfig {
+  return kind == 'buy' ? sanitizeAutoBuy(cfg) : sanitizeAutoReset(cfg)
 }

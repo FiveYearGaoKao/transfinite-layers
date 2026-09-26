@@ -39,7 +39,7 @@ export function purchaseStallsLayer0(layer: LayerId, remaining: Decimal): boolea
  */
 function geometricSum(last: Decimal, ratio: Decimal, k: Decimal): Decimal {
   if (!ratio.gt(1) || !ratio.isFinite()) return last
-  return last.mul(ratio.div(ratio.sub(1))).mul(new Decimal(1).sub(ratio.pow(k.neg())))
+  return last.mul(ratio.div(ratio.sub(1))).mul(Decimal.dOne.sub(ratio.pow(k.neg())))
 }
 
 /**可购买项:提供价格函数,并可选地提供解析求和/求逆 */
@@ -71,7 +71,7 @@ export interface BuyableItem {
  * @param k 购买数量
  */
 export function sumCost(item: BuyableItem, k: Decimal): Decimal {
-  if (k.lte(0)) return new Decimal(0)
+  if (k.lte(0)) return Decimal.dZero
   const declared = item.sum?.(k)
   if (declared != undefined) return declared
   const n0 = item.amount()
@@ -79,7 +79,7 @@ export function sumCost(item: BuyableItem, k: Decimal): Decimal {
   const last = item.cost(nk)
   //价格非有限(溢出)时原样返回,交给上层视为"买不起"
   if (!last.isFinite()) return last
-  if (last.lte(0)) return new Decimal(0)
+  if (last.lte(0)) return Decimal.dZero
   const prevN = nk.sub(1)
   //只买1个,或末项就是第一项:和式退化为单项
   if (k.lte(1) || prevN.lt(n0)) return last
@@ -98,7 +98,7 @@ export function sumCost(item: BuyableItem, k: Decimal): Decimal {
  * 买不起任何一个时返回0
  */
 export function maxBuyable(item: BuyableItem, budget: Decimal): Decimal {
-  if (budget.lte(0)) return new Decimal(0)
+  if (budget.lte(0)) return Decimal.dZero
   const anchor = item.sumInverse?.(budget)
   const valid = anchor != undefined && anchor.isFinite() && !anchor.isNan()
   if (valid) {
@@ -106,8 +106,8 @@ export function maxBuyable(item: BuyableItem, budget: Decimal): Decimal {
     if (refined != undefined) return refined
   }
   const estimate = valid && anchor.gt(0) ? anchor : undefined
-  const delta = maxSatisfying((k) => sumCost(item, k), budget, new Decimal(0), estimate)
-  return delta.gt(0) ? delta : new Decimal(0)
+  const delta = maxSatisfying((k) => sumCost(item, k), budget, Decimal.dZero, estimate)
+  return delta.gt(0) ? delta : Decimal.dZero
 }
 
 /**锚点附近允许的修正步数(超过就认为锚点不可信,交给通用搜索) */
@@ -118,10 +118,10 @@ const MAX_REFINE = 8
  * 锚点偏高就逐步下调、偏低就逐步上调;修正不到就返回undefined(退回通用搜索)
  */
 function refineBySum(item: BuyableItem, k0: Decimal, budget: Decimal): Decimal | undefined {
-  let k = k0.lt(0) ? new Decimal(0) : k0
+  let k = k0.lt(0) ? Decimal.dZero : k0
   if (sumCost(item, k).gt(budget)) {
     for (let i = 0; i < MAX_REFINE; i++) {
-      if (k.lte(0)) return new Decimal(0)
+      if (k.lte(0)) return Decimal.dZero
       k = k.sub(1)
       if (!sumCost(item, k).gt(budget)) return k
     }
@@ -161,9 +161,9 @@ export function priceCountAnchor(
   if (raw == undefined) return undefined
   const nk = curve.inverse(raw, ctx)
   if (nk == undefined) return undefined
-  if (!nk.isFinite() || nk.isNan() || !nk.gt(0)) return new Decimal(0)
+  if (!nk.isFinite() || nk.isNan() || !nk.gt(0)) return Decimal.dZero
   const canBuy = nk.floor().sub(owned).add(1)
   //估算落在已购数之下(软上限拐点附近)时返回0——这是合法估算(0个),求解器会据此从0向上搜索;
   //若返回负数会被判为非法估算而丢弃整条锚定路径,反而退化(见tools/bisect)
-  return canBuy.gt(0) ? canBuy : new Decimal(0)
+  return canBuy.gt(0) ? canBuy : Decimal.dZero
 }

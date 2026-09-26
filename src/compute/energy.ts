@@ -11,7 +11,11 @@ import { defineSlot, registerEffect, slotValue } from './effects'
 import { crossLayerExponentBonus } from './crossLayer'
 
 /**能量加成指数槽位(默认0.2;被iu13/iu32/挑战奖励等修饰) */
-const SLOT_ENERGY_BASE = defineSlot('energy:base', () => new Decimal(ENERGY_BONUS_EXPONENT), 'global')
+const SLOT_ENERGY_BASE = defineSlot(
+  'energy:base',
+  () => new Decimal(ENERGY_BONUS_EXPONENT),
+  'global',
+)
 
 /**单层能量给低层维度的加成数值:能量指数由 energy:base 槽位决定 */
 function energyFactor(energy: Decimal, exponent: Decimal): Decimal {
@@ -31,8 +35,8 @@ registerEffect({
   value(ctx, base) {
     const source = nextLayer(ctx.pos, 0)
     const S = getLayer(source)
-    if (!S) return new Decimal(1)
-    const exponent = crossLayerExponentBonus(base ?? new Decimal(1), levelGap(source))
+    if (!S) return Decimal.dOne
+    const exponent = crossLayerExponentBonus(base ?? Decimal.dOne, levelGap(source))
     return energyFactor(getEnergy(source), exponent)
   },
 })

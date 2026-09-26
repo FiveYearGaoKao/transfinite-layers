@@ -82,8 +82,8 @@ export const UPGRADES: UpgradeDef[] = [
         //跨层时该来源的加成被强化为 value^reward^(gap-1),即指数×reward^(gap-1)
         const source = nextLayer(ctx.pos, 0)
         const S = getLayer(source)
-        if (!S || !hasUpgrade(source, 1)) return new Decimal(1)
-        const exponent = crossLayerExponentBonus(base ?? new Decimal(1), levelGap(source))
+        if (!S || !hasUpgrade(source, 1)) return Decimal.dOne
+        const exponent = crossLayerExponentBonus(base ?? Decimal.dOne, levelGap(source))
         return u1Formula(S.points, exponent)
       },
       isActive: (ctx) => {

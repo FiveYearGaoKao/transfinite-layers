@@ -3,9 +3,11 @@ import Decimal, { type DecimalSource } from 'break_eternity.js'
 import { player } from '@/data/player'
 import {
   challengeCompletions,
+  compareHeight,
   dimensionAmount,
   getEnergy,
   getLayer,
+  getLayerHeight,
   getOrderedLayers,
   getPoints,
   hasAchievement,
@@ -78,6 +80,20 @@ type FrameAchievement = Extract<AchievementDef, { trigger?: 'frame' }>
 type ResetAchievement = Extract<AchievementDef, { trigger: 'reset' }>
 type InfinityAchievement = Extract<AchievementDef, { trigger: 'infinity' }>
 
+/**
+ * "获得至少1个层级N点数"类成就的重置触发判据
+ * 层级引用一律用**绝对高度**(`getLayerHeight`,与"层级N"的命名口径一致),不用坐标
+ * @param ev 重置事件
+ * @param targetLayer 目标层级的绝对高度(如 `[2]` 表示层级2)
+ * @returns 本次重置是否就是目标层的晋升,且确实给该层发了至少1点数
+ * 注:收益已由 resetGain 向下取整,拿不到点数时 gain 为 0,故 `gte(1)` 就是"拿到了点数";
+ *     判定发生在收益发放之前(logic/reset.ts),所以这里看的是 gain 而不是该层的当前点数
+ */
+function gotLayerPoints(ev: ResetEvent, targetLayer: DecimalSource[]): boolean {
+  const height = getLayerHeight(ev.layer)
+  return !!height && compareHeight(height, targetLayer) == 0 && ev.gain.gte(1)
+}
+
 const normalAchievements: AchievementDef[] = [
   {
     id: 'a11',
@@ -120,7 +136,8 @@ const normalAchievements: AchievementDef[] = [
     description: '获得至少1个层级1点数',
     reward: 3,
     effectText: '解锁升级：额外加速器',
-    isCompleted: () => getPoints([1]).gte(1),
+    trigger: 'reset',
+    isCompleted: (ev) => gotLayerPoints(ev, [1]),
   },
   {
     id: 'a17',
@@ -182,7 +199,8 @@ const normalAchievements: AchievementDef[] = [
     name: '转生，再一次',
     description: '获得至少1个层级2点数',
     reward: 5,
-    isCompleted: () => getPoints([2]).gte(1),
+    trigger: 'reset',
+    isCompleted: (ev) => gotLayerPoints(ev, [2]),
   },
   {
     id: 'a26',
@@ -251,7 +269,8 @@ const normalAchievements: AchievementDef[] = [
     name: '还有多少层?',
     description: '获得至少1个层级3点数',
     reward: 15,
-    isCompleted: () => getPoints([3]).gte(1),
+    trigger: 'reset',
+    isCompleted: (ev) => gotLayerPoints(ev, [3]),
   },
   {
     id: 'a35',
@@ -330,7 +349,8 @@ const normalAchievements: AchievementDef[] = [
     name: '永无止境',
     description: '获得至少1个层级4点数',
     reward: 44,
-    isCompleted: () => getPoints([4]).gte(1),
+    trigger: 'reset',
+    isCompleted: (ev) => gotLayerPoints(ev, [4]),
   },
   {
     id: 'a45',

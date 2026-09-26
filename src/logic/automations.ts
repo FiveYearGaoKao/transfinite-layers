@@ -7,6 +7,8 @@ import { getLayer, forEachLayer, getOrderedLayers, prevLayer, type LayerEntry } 
 import {
   defaultAutoBuy,
   defaultAutoReset,
+  sanitizeAutoBuy,
+  sanitizeAutoReset,
   type AutoBuyConfig,
   type AutoConfig,
   type AutomationDef,
@@ -97,6 +99,14 @@ export const AUTOMATIONS: AutomationDef[] = [
 ]
 
 //------全局配置------
+/**
+ * 配置形状对应的读档兜底函数(通用:新增自动化类型时在这里加一行即可)
+ * 键是自动化id;不在表里的id按"自动购买"形状兜底
+ * 拆成参数而不是先造 def 再取值,是为了避免"自动重置的默认值"在自动购买上多算一份
+ */
+function sanitizeAutoCfg(id: string, cfg: unknown): AutoConfig {
+  return id == AUTO_RESET_ID ? sanitizeAutoReset(cfg) : sanitizeAutoBuy(cfg)
+}
 /**深拷贝自动化配置:perItem记录必须单独复制(防止模板与各层互相串改);Decimal不可变可安全共享 */
 function cloneCfg<T extends AutoConfig>(cfg: T): T {
   if ('perItem' in cfg) {
@@ -105,13 +115,24 @@ function cloneCfg<T extends AutoConfig>(cfg: T): T {
   }
   return { ...cfg }
 }
-/**获取全局自动化配置模板(缺失类型按默认补齐,解锁auto-global-config后才有意义) */
+/**
+ * 获取全局自动化配置模板(缺失类型按默认补齐,解锁auto-global-config后才有意义)
+ * 每种类型的**内部字段**也要靠兜底函数补齐:旧档模板里可能没有后加的字段(如"幂次"),
+ * 只补"缺失的类型"会让新层级从模板拷到一份缺字段的配置
+ */
 export function getGlobalAutomation(): LayerAutomation {
   if (!player.autoGlobal) player.autoGlobal = { cfgs: {} }
   const g = player.autoGlobal
   if (!g.cfgs) g.cfgs = {}
   for (const def of AUTOMATIONS) {
-    if (!g.cfgs[def.id]) g.cfgs[def.id] = def.defaultCfg()
+    const stored = g.cfgs[def.id]
+    if (!stored) {
+      g.cfgs[def.id] = def.defaultCfg()
+      continue
+    }
+    //形状完整(键集合一致)就直接用,避免每帧都重建配置对象
+    const full = sanitizeAutoCfg(def.id, stored)
+    if (Object.keys(stored).length != Object.keys(full).length) g.cfgs[def.id] = full
   }
   return g
 }
@@ -162,12 +183,13 @@ export function getLayerAutomation(pos: LayerId): LayerAutomation {
     delete old.reset
   }
   //为每个注册的自动化补齐配置:解锁全局配置后,新创建的配置以全局模板为准,否则按默认值
+  //全局模板那条路径要过兜底函数:模板里可能缺后加的字段(如"幂次"),否则新层级会拷到缺字段的配置
   const useGlobal = hasKnowledge('auto-global-config')
   for (const def of AUTOMATIONS) {
     if (!auto.cfgs[def.id]) {
-      auto.cfgs[def.id] = useGlobal
-        ? cloneCfg(getGlobalAutomation().cfgs[def.id] ?? def.defaultCfg())
-        : def.defaultCfg()
+      const src = useGlobal ? getGlobalAutomation().cfgs[def.id] : undefined
+      const full = src ? sanitizeAutoCfg(def.id, src) : def.defaultCfg()
+      auto.cfgs[def.id] = cloneCfg(full)
     }
   }
   return auto
@@ -357,7 +379,7 @@ function autoBuyUpgrades(pos: LayerId, cfg: AutoBuyConfig) {
   }
 }
 /**
- * 自动重置(含自动无限重置)的条件判定:把配置里的时间/点数/倍率条件按combine合并
+ * 自动重置(含自动无限重置)的条件判定:把配置里的时间/点数/倍率/幂次条件按combine合并
  * @param cfg 自动重置配置
  * @param values gain为本次重置收益,resource为当前资源量,elapsed为"时间"条件的计时
  * 说明:elapsed缺省时不参与判定(与层级自动重置一致,取不到下层计时就只看收益条件)
@@ -367,10 +389,15 @@ export function autoResetConditionsMet(
   cfg: AutoResetConfig,
   values: { gain: Decimal; resource: Decimal; elapsed?: Decimal },
 ): boolean {
+  //四个条件各自独立,按combine合并:
+  //- 倍率:收益 ≥ 点数×倍率
+  //- 幂次:收益 ≥ 点数^幂次(幂次只在有限且>0时参与,避免NaN/∞或≤0把条件锁死/恒真)
   const conditions: boolean[] = []
   if (cfg.useTime && values.elapsed) conditions.push(values.elapsed.gte(cfg.time))
   if (cfg.usePoint) conditions.push(values.gain.gte(cfg.point))
   if (cfg.useMult) conditions.push(values.gain.gte(values.resource.mul(cfg.mult).max(1)))
+  if (cfg.usePower && cfg.power.isFinite() && cfg.power.gt(0))
+    conditions.push(values.gain.gte(values.resource.pow(cfg.power)))
   if (conditions.length == 0) return false
   return cfg.combine == 'all' ? conditions.every((c) => c) : conditions.some((c) => c)
 }

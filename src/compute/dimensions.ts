@@ -103,11 +103,11 @@ export function dimensionCost(layer: LayerId, id: number): Decimal {
 }
 /**获取某维度的乘数 */
 export function dimensionMultiplier(layer: LayerId, id: number): Decimal {
-  return applyTo('dimensionMult', new Decimal(1), { pos: layer, id })
+  return applyTo('dimensionMult', Decimal.dOne, { pos: layer, id })
 }
 /**获取某维度的指数 */
 export function dimensionExponent(layer: LayerId, id: number): Decimal {
-  return applyTo('dimensionExponent', new Decimal(1), { pos: layer, id })
+  return applyTo('dimensionExponent', Decimal.dOne, { pos: layer, id })
 }
 /**维度产量的公式基准值(总量×乘数^指数,未经production管道) */
 export function productionBase(layer: LayerId, id: number): Decimal {

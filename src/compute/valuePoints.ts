@@ -11,6 +11,9 @@ import { resetGainBase } from './prestige'
 import './knowledge'
 import './infinity'
 
+/**答题冷却的基准值(秒);复用一个常量,避免每次求值都新建 Decimal */
+const QUIZ_COOLDOWN_BASE = new Decimal(3600)
+
 //------层级加成(逐维度一棵)------
 
 /**维度产量:公式基准=总量×乘数^指数,再经production管道(含维度生产软上限) */
@@ -63,7 +66,7 @@ defineValuePoint({
   id: 'quizCooldown',
   statRoots: 'once',
   label: () => '答题冷却(秒)',
-  base: () => new Decimal(3600),
+  base: () => QUIZ_COOLDOWN_BASE,
 })
 defineValuePoint({ id: 'knowledgeGain', statRoots: 'once', sign: 'x', label: () => '知识获取' })
 defineValuePoint({ id: 'infinityGain', statRoots: 'once', sign: 'x', label: () => '无限点数获取' })

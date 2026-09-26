@@ -14,6 +14,7 @@ import { exportSaveString, importSaveString } from '@/save/save'
 import { checkCode, CHECKSUM_SALT } from '@/save/checksum'
 import { findInvalidValues } from '@/save/validate'
 import { checkLayerInvariants } from '@/logic/layerStructure'
+import { getLayerAutomation } from '@/logic/automations'
 import { gameVersion, EARLIEST_SAVE_TIME } from '@/data/constants'
 import { check, ensureLayer0Order, freshSave, loadRealSave, reportChecks } from './helpers'
 
@@ -191,5 +192,34 @@ clearLogs()
 check('旧版本存档导入成功', importSaveString(encodeSave(old)))
 check('导入后版本号升为当前版本', player.version == gameVersion, player.version)
 check('提示了存档版本过旧', lastLog().includes('过旧'), lastLog())
+
+console.log('== 7. 自动化配置:全局模板缺字段时逐项补齐(不能把缺字段的模板拷给新层级) ==')
+//旧档的全局模板(reset)里没有"幂次"这两个字段(机制是后加的)
+const stale = decodeSave(good)
+const staleGlobal = stale.autoGlobal as { cfgs: Record<string, unknown> } | undefined
+if (!staleGlobal) (stale as Record<string, unknown>).autoGlobal = { cfgs: {} }
+const staleCfgs = (stale.autoGlobal as { cfgs: Record<string, unknown> }).cfgs
+//只留"倍率"相关的字段,模拟升级前写下的模板
+staleCfgs['reset'] = { enabled: true, priority: 3, combine: 'all', useMult: true }
+reseal(stale)
+check('缺usePower的旧模板可导入', importSaveString(encodeSave(stale)))
+check(
+  '导入时补齐了模板的usePower',
+  'usePower' in (player.autoGlobal.cfgs['reset'] as unknown as Record<string, unknown>),
+)
+//新层级从全局模板拷贝配置:必须带上后加的字段(这条不经过读档,验证的是读取模板时的兜底)
+freshSave()
+ensureLayer0Order(1)
+player.knowledgeUpgrades['auto-global-config'] = new Decimal(1)
+//模板里只有"倍率"相关的字段,没有"幂次"
+player.autoGlobal.cfgs['reset'] = { combine: 'all', useMult: true, mult: new Decimal(5) } as never
+const newLayerCfg = getLayerAutomation([1]).cfgs['reset'] as unknown as Record<string, unknown>
+check('新层级从模板拷贝时带上usePower', 'usePower' in newLayerCfg)
+check('新层级从模板拷贝时带上power', 'power' in newLayerCfg)
+check('拷贝保留了模板里的玩家设置', newLayerCfg.combine == 'all' && newLayerCfg.useMult === true)
+check(
+  '读取模板时就地补齐(不依赖读档)',
+  'usePower' in (player.autoGlobal.cfgs['reset'] as unknown as Record<string, unknown>),
+)
 
 process.exit(reportChecks() ? 0 : 1)

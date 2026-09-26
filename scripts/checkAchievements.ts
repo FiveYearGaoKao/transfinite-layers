@@ -101,11 +101,15 @@ check('每帧检查幂等(已解锁的不再重复解锁)', newlyUnlocked(update
 
 console.log('== 3. 层级重置桶:只解锁层级重置成就 ==')
 freshSave()
-ensureLayer0Order(1)
-getLayer([0])!.resetTime = new Decimal(0)
-const resetNew = newlyUnlocked(() =>
-  checkResetAchievements({ layer: [1], gain: new Decimal('1e300') }),
-)
+//层级重置成就按"绝对高度"认层,所以逐层构造:重置层级n解锁层级n,同时给"获得至少1个层级n点数"发收益
+//(这些条件只在层级重置瞬间可能成立,不能靠事后造状态)
+const resetNew = newlyUnlocked(() => {
+  for (const n of [1, 2, 3, 4]) {
+    //先让目标层存在(层级1由解锁层级1的重置产生,故这一轮要先建层级1再发这次重置事件)
+    ensureLayer0Order(n)
+    checkResetAchievements({ layer: [n], gain: new Decimal('1e300') })
+  }
+})
 check(
   '层级重置检查只解锁层级重置成就',
   [...resetNew].every((id) => resetIds.has(id)),

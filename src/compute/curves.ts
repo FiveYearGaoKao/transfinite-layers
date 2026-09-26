@@ -216,7 +216,11 @@ function powerSum(c: Decimal, a: Decimal, p: Decimal, n0: Decimal, k: Decimal): 
   const last = c.mul(a.add(n0).add(k).sub(1).pow(p))
   const lo = a.add(n0)
   const hi = a.add(n0).add(k).sub(1)
-  const integral = hi.pow(p.add(1)).sub(lo.pow(p.add(1))).mul(c).div(p.add(1))
+  const integral = hi
+    .pow(p.add(1))
+    .sub(lo.pow(p.add(1)))
+    .mul(c)
+    .div(p.add(1))
   return integral.add(first.add(last).div(2))
 }
 
@@ -235,7 +239,13 @@ function powerSumInverse(
   const lo = a.add(n0)
   const first = c.mul(lo.pow(p))
   const solve = (target: Decimal): Decimal =>
-    target.mul(p.add(1)).div(c).add(lo.pow(p.add(1))).root(p.add(1)).sub(lo).add(1)
+    target
+      .mul(p.add(1))
+      .div(c)
+      .add(lo.pow(p.add(1)))
+      .root(p.add(1))
+      .sub(lo)
+      .add(1)
   let k = solve(budget)
   for (let i = 0; i < 2; i++) {
     if (!k.gt(1)) return k
@@ -313,9 +323,7 @@ export function powerQuadratic(opts: {
   return makeCurve({
     label: opts.label ?? 'powerQuadratic',
     at: (ctx, n) =>
-      runParam(base, ctx).pow(
-        n.mul(runParam(q, ctx).mul(n).add(1)).add(runParam(c, ctx)),
-      ),
+      runParam(base, ctx).pow(n.mul(runParam(q, ctx).mul(n).add(1)).add(runParam(c, ctx))),
     inverse: (ctx, v) => {
       const value = new Decimal(v)
       const baseV = runParam(base, ctx)
@@ -337,9 +345,7 @@ export function powerDoubleExp(opts: { m: CurveParam; base?: CurveParam; label?:
   return makeCurve({
     label: opts.label ?? 'powerDoubleExp',
     at: (ctx, n) =>
-      runParam(base, ctx).pow(
-        new Decimal(2).pow(n).mul(runParam(m, ctx)).mul(runParam(base, ctx)),
-      ),
+      runParam(base, ctx).pow(new Decimal(2).pow(n).mul(runParam(m, ctx)).mul(runParam(base, ctx))),
     inverse: (ctx, v) => {
       const value = new Decimal(v)
       const baseV = runParam(base, ctx)

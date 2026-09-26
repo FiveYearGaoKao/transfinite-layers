@@ -3,6 +3,7 @@ import Decimal from 'break_eternity.js'
 import { ref } from 'vue'
 import { compressToBase64, decompressFromBase64 } from 'lz-string'
 import { player, type Player, initializeSave } from '@/data/player'
+import { sanitizeAutoConfig } from '@/data/types'
 import { sanitizeMetaAutomations } from '@/logic/metaAutomations'
 import { gameVersion, EARLIEST_SAVE_TIME, SAVE_SLOT_COUNT, storagePrefix } from '@/data/constants'
 import { getLayer, invalidateLayerOrder } from '@/access'
@@ -249,6 +250,16 @@ function load(s: string): number {
       player.infinityBestRate = new Decimal(0)
     }
     player.metaAutomations = sanitizeMetaAutomations(player.metaAutomations)
+    //全局自动化模板:补齐每种配置形状的字段(缺失类型由logic/automations按默认创建)
+    //全局自动化模板:补齐每种配置形状的字段(缺失类型由logic/automations按默认创建)
+    if (player.autoGlobal?.cfgs) {
+      for (const [id, cfg] of Object.entries(player.autoGlobal.cfgs)) {
+        player.autoGlobal.cfgs[id] = sanitizeAutoConfig(
+          id == 'reset' ? 'reset' : 'buy',
+          cfg,
+        )
+      }
+    }
     //层级结构校验:丢弃非规范键;临时层不存档,清空后由下一次结构阶段按新层级重建
     sanitizeLayers()
     clearTempLayers()

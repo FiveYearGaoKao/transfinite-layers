@@ -38,7 +38,7 @@ export function crossLayerPenalty(): Decimal {
  */
 export function crossLayerFactor(gap: DecimalSource, base: DecimalSource): Decimal {
   const g = new Decimal(gap)
-  if (g.lte(1)) return new Decimal(1)
+  if (g.lte(1)) return Decimal.dOne
   return new Decimal(base).pow(g.sub(1))
 }
 /**跨层重置门槛:K^(penalty^(g-1)) */

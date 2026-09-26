@@ -25,12 +25,10 @@ interface prestigeFormula {
 export const PRESTIGE: prestigeFormula[] = [
   {
     resetGain(layer: LayerId): Decimal {
-      if (isLayer0(layer)) return new Decimal(0)
+      if (isLayer0(layer)) return Decimal.dZero
       const prestigeResource = getPoints(prevLayer(layer))
-      const gain = prestigeResource
-        .div(resetThreshold(layer))
-        .pow(resetExponent(layer))
-      return gain.gte(1) ? gain : new Decimal(0)
+      const gain = prestigeResource.div(resetThreshold(layer)).pow(resetExponent(layer))
+      return gain.gte(1) ? gain : Decimal.dZero
     },
   },
 ]
@@ -55,7 +53,7 @@ export function resetExponent(layer: LayerId): Decimal {
 export function resetGainBase(layer: LayerId): Decimal {
   //按阶精确取公式行:阶未定义时不静默兜底(见层级系统.md"注册表缺失即拒绝解锁")
   const formula = PRESTIGE[getLayerOrder(layer)]
-  return formula ? formula.resetGain(layer) : new Decimal(0)
+  return formula ? formula.resetGain(layer) : Decimal.dZero
 }
 /**重置资源的获取量 */
 export function resetGain(layer: LayerId): Decimal {

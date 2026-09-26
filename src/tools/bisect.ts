@@ -41,10 +41,11 @@ export function resetSearchStats() {
 export function maxSatisfying(
   f: (k: Decimal) => Decimal,
   budget: Decimal,
-  origin: Decimal = new Decimal(0),
+  origin?: Decimal,
   estimate?: DecimalSource,
 ): Decimal {
-  if (origin.lt(0)) origin = new Decimal(0)
+  if (origin == undefined) origin = Decimal.dZero
+  if (origin.lt(0)) origin = Decimal.dZero
   const g = (k: Decimal) => f(origin.add(k))
   const e = estimate != null ? new Decimal(estimate).floor() : null
   if (e && !e.isNan() && e.isFinite() && e.gt(origin)) {
@@ -55,7 +56,7 @@ export function maxSatisfying(
       return hi == null ? rel : refineInteger(g, budget, rel, hi)
     }
     //估算偏大:它是合法的不可行上界,与原点(恒可行)组成包围圈
-    return refineInteger(g, budget, new Decimal(0), rel)
+    return refineInteger(g, budget, Decimal.dZero, rel)
   }
   return searchMax(g, budget)
 }
@@ -75,8 +76,8 @@ function satisfies(g: (k: Decimal) => Decimal, budget: Decimal, k: Decimal): boo
  * 倍增64次即覆盖到2^64;若一路都可行(答案超出可表示范围),返回最后的lo
  */
 function searchMax(g: (k: Decimal) => Decimal, budget: Decimal): Decimal {
-  let lo = new Decimal(0)
-  let hi = new Decimal(1)
+  let lo = Decimal.dZero
+  let hi = Decimal.dOne
   for (let i = 0; i < LOOP_CAP; ++i) {
     if (!satisfies(g, budget, hi)) return refineInteger(g, budget, lo, hi)
     lo = hi
