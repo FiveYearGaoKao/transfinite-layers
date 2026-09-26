@@ -5,17 +5,21 @@
 //策略与口径见 docs/面向开发者/测试与平衡.md
 import Decimal from 'break_eternity.js'
 import { player } from '@/data/player'
+import type { LayerId } from '@/data/types'
 import { addValue } from '@/save/save'
 import {
+  getEnergy,
   getHighestActiveLayer,
+  getLayer,
   getLayerName,
   getOrderedLayers,
   getOrderedTempLayers,
   getPoints,
+  hasAchievement,
   totalChallengeCompletions,
 } from '@/access'
 import { format, formatTime, formatWhole } from '@/tools/format'
-import { getLayerOrder, isLayer0 } from '@/tools/ordinal'
+import { compareLayer, getLayerOrder, isLayer0 } from '@/tools/ordinal'
 import { canBuyUpgrade, getUpgrades } from '@/compute/upgrades'
 import { canReset, resetGain } from '@/compute/prestige'
 import {
@@ -28,10 +32,17 @@ import {
   canBuyKnowledgeUpgrade,
   getBoostPresets,
   getKnowledgeUpgrade,
+  getPsdSpeed,
   hasKnowledge,
   knowledgeAmount,
 } from '@/compute/knowledge'
-import { buyBuyableMax, buyDimensionMax, buyUpgrade } from '@/logic/purchase'
+import {
+  buyBuyable,
+  buyBuyableMax,
+  buyDimension,
+  buyDimensionMax,
+  buyUpgrade,
+} from '@/logic/purchase'
 import { getBuyables, isUnlocked as isBuyableUnlocked } from '@/compute/buyables'
 import { doReset, findUnlockableTempLayer } from '@/logic/reset'
 import { buyInfinityUpgrade, doInfinityReset } from '@/logic/infinity'
@@ -61,6 +72,13 @@ export interface BotPolicy {
   name: string
   /**引擎每步更新当前游戏时间(秒),供策略里的超时判定使用 */
   setTime?(t: Decimal): void
+  /**
+   * 本步要求的基础步长(秒,现实时间;返回undefined表示用引擎缺省值)
+   * 用于抓"1游戏秒内"这类窗口:窗口内必须把步长压到远小于1秒,否则永远抓不到
+   */
+  stepDt?(): number | undefined
+  /**当前阶段名(仅用于指标表诊断) */
+  phase?(): string
   act(): boolean
 }
 
@@ -110,6 +128,11 @@ export interface GreedyOptions {
    * 维度1生产点数/能量,最不该被饿着;游戏自带的"全部最大"是desc(从最高维度开始),会把预算全花在最高维度上
    */
   buyOrder: 'asc' | 'desc'
+  /**
+   * 每次买几个:one=每个维度/可购买只买1个(接近早期手动点击:先维度1、再维度2),
+   * max=按预算买最大(游戏里"购买模式:买最大")。asc+max会把预算全砸在维度1上
+   */
+  buyAmount: 'one' | 'max'
   /**每步最多用多少比例的知识换离线时间(需知识升级"时间感知";0=不换) */
   knowledgeToTime: number
   /**留给"加速"的离线时间储备(秒),超出的部分转成加速时间(需"时间存储") */
@@ -127,6 +150,7 @@ export const GREEDY_DEFAULTS: GreedyOptions = {
   unlockGate: 1e100,
   buyPerStep: 1,
   buyOrder: 'asc',
+  buyAmount: 'max',
   knowledgeToTime: 0.1,
   boostReserve: 3600,
 }
@@ -153,16 +177,38 @@ const KNOWLEDGE_PRIORITY = [
   'time-overclock',
 ]
 
+/**机器人动作的钩子:阶段式策略用它们在"何时解锁/何时重置/买哪些维度"上覆盖贪心规则 */
+interface ActionHooks {
+  /**当前游戏时间(秒);阶段式策略自己维护时间轴,故由它注入 */
+  now?(): Decimal
+  /**解锁新层级前的额外收益要求(≤1=不额外要求);只对开局的第一次解锁有意义 */
+  unlockGain?(): number
+  /**层级1重置必须达到的最低收益(0=按普通重置规则);spamLayer1为真时忽略 */
+  layer1Gain?(): number
+  /**层级1本阶段允许购买的维度数(只允许买id<该值);缺省不限 */
+  layer1BuyLimit?(): number
+  /**紧急重置层级1:只看canReset、不看收益(抓a24的"1游戏秒内再重置一次"窗口) */
+  spamLayer1?(): boolean
+  /**本步每次买几个(覆盖GreedyOptions.buyAmount) */
+  buyAmount?(): 'one' | 'max'
+  /**发生了一次真实层级重置 */
+  onReset?(layer: LayerId, gain: Decimal): void
+  /**解锁了一个新层级 */
+  onUnlock?(pos: LayerId, gain: Decimal): void
+}
+
 /**
- * 贪心策略:能买就买、够格就重置、挑战按顺序做
- * 不做任何"刻意操作"的成就(见测试与平衡.md的成就支线),得到的是自然推进的保守下界
+ * 构造一套贪心动作(全部只调用"按钮背后那层"的logic函数,不用调试指令、不直接改player状态)
+ * 贪婪策略与阶段式策略共用同一套动作,区别只在ActionHooks给出的"何时解锁/何时重置"
  */
-export function greedyPolicy(opts: GreedyOptions = GREEDY_DEFAULTS): BotPolicy {
+function makeActions(opts: GreedyOptions, hooks: ActionHooks = {}) {
   /**暂时放弃的挑战(超时未完成);解锁新层级后清空重试 */
   let giveUp = new Set<string>()
   let giveUpAtLayers = 0
   let challengeEnteredAt = new Decimal(0)
   let now = new Decimal(0)
+  /**当前时间:阶段式策略注入自己的时间轴,贪心策略用setTime喂进来的时间 */
+  const time = () => hooks.now?.() ?? now
 
   /**知识收入:签到与答题(都按现实时间,由假时钟推进);答题按"完美玩家"处理(直接给出正确答案) */
   function actKnowledgeIncome(): boolean {
@@ -231,7 +277,7 @@ export function greedyPolicy(opts: GreedyOptions = GREEDY_DEFAULTS): BotPolicy {
         exitChallenge(active)
         return true
       }
-      if (now.sub(challengeEnteredAt).gte(opts.challengeTimeout)) {
+      if (time().sub(challengeEnteredAt).gte(opts.challengeTimeout)) {
         exitChallenge(active)
         giveUp.add(active.id)
         return true
@@ -243,7 +289,7 @@ export function greedyPolicy(opts: GreedyOptions = GREEDY_DEFAULTS): BotPolicy {
     const target = candidates.find((d) => completions(d).lt(1)) ?? candidates[0]
     if (!target) return false
     enterChallenge(target)
-    challengeEnteredAt = now
+    challengeEnteredAt = time()
     return true
   }
 
@@ -253,25 +299,48 @@ export function greedyPolicy(opts: GreedyOptions = GREEDY_DEFAULTS): BotPolicy {
     if (getOrderedLayers('asc').length > 1 && getPoints([0]).lt(opts.unlockGate)) return false
     const temp = findUnlockableTempLayer()
     if (!temp) return false
+    const gain = resetGain(temp)
+    //开局:层级1的解锁本身就是第一次重置,故也要攒到要求的收益(见PhasedOptions.openGain)
+    const need = hooks.unlockGain?.() ?? 0
+    if (need > 1 && gain.lt(need)) return false
     const unlocked = doReset(temp)
     //与app/uiActions一致:解锁后把视角切到新层级
-    if (unlocked) player.layerSubtab = unlocked
+    if (unlocked) {
+      player.layerSubtab = unlocked
+      hooks.onUnlock?.(unlocked, gain)
+    }
     return unlocked != undefined
+  }
+
+  /**执行一次层级重置(并把"重置了哪层、拿了多少收益"报给钩子) */
+  function resetLayer(layer: LayerId, gain: Decimal): void {
+    doReset(layer)
+    hooks.onReset?.(layer, gain)
   }
 
   /**重置:从最高层往下,够格就晋升;都不够格时看无限重置 */
   function actReset(): boolean {
+    const spam = hooks.spamLayer1?.() ?? false
+    const openGain = hooks.layer1Gain?.() ?? 0
     for (const e of getOrderedLayers('desc')) {
       if (isLayer0(e.pos)) continue
       if (!e.L.active || !canReset(e.pos)) continue
       const gain = resetGain(e.pos)
+      //开局:层级1的重置要攒到要求的收益;spam(抓a24窗口)只要求canReset
+      if (compareLayer(e.pos, [1]) == 0 && (spam || openGain > 0)) {
+        if (spam || gain.gte(openGain)) {
+          resetLayer(e.pos, gain)
+          return true
+        }
+        continue
+      }
       //够本才重置:本次收益至少是"历史最佳收益"的resetMult倍(所以间隔会自然拉长,收益指数增长);
       //长时间没进展时放宽到"略优于历史最佳"。
       //用bestPoints而不是当前点数:买维度会把点数花到0,拿当前点数当基准会导致每步都"够本"→ 无限抖动
       const enough = gain.gte(e.L.bestPoints.mul(opts.resetMult))
       const stalled = e.L.resetTime.gte(opts.resetTime) && gain.gte(e.L.bestPoints)
       if (gain.gt(0) && (e.L.bestPoints.eq(0) || enough || stalled)) {
-        doReset(e.pos)
+        resetLayer(e.pos, gain)
         return true
       }
     }
@@ -285,6 +354,8 @@ export function greedyPolicy(opts: GreedyOptions = GREEDY_DEFAULTS): BotPolicy {
   /**购买:每层先买能买的升级,再按buyOrder买满各维度,最后买可购买 */
   function actBuy(): boolean {
     let acted = false
+    const layer1Limit = hooks.layer1BuyLimit?.() ?? Infinity
+    const amount = hooks.buyAmount?.() ?? opts.buyAmount
     for (const e of getOrderedLayers('desc')) {
       if (!e.L.active) continue
       const order = getLayerOrder(e.pos)
@@ -293,44 +364,208 @@ export function greedyPolicy(opts: GreedyOptions = GREEDY_DEFAULTS): BotPolicy {
         buyUpgrade(e.pos, u.id)
         acted = true
       }
+      //开局只允许买"计划里那一个"维度(先维度1、第二次重置后再买维度2),其余留给正常推进阶段
+      const limit = compareLayer(e.pos, [1]) == 0 ? layer1Limit : Infinity
       const n = e.L.dimensions.length
       for (let i = 0; i < n; i++) {
         const id = opts.buyOrder == 'asc' ? i : n - 1 - i
-        if (buyDimensionMax(e.pos, id).gt(0)) acted = true
+        if (id >= limit) continue
+        const spent = amount == 'one' ? buyDimension(e.pos, id, 1) : buyDimensionMax(e.pos, id)
+        if (spent.gt(0)) acted = true
       }
       for (const b of getBuyables(order)) {
         if (!isBuyableUnlocked(e.pos, b.id)) continue
-        if (buyBuyableMax(e.pos, b.id).gt(0)) acted = true
+        const spent = amount == 'one' ? buyBuyable(e.pos, b.id, 1) : buyBuyableMax(e.pos, b.id)
+        if (spent.gt(0)) acted = true
       }
     }
     return acted
   }
 
+  /**按固定顺序跑一轮动作(解锁了新层级说明变强了:放弃过的挑战重新试) */
+  function run(): boolean {
+    const layers = getOrderedLayers('asc').length
+    if (layers > giveUpAtLayers) {
+      giveUpAtLayers = layers
+      giveUp = new Set()
+    }
+    let acted = false
+    const actions = [
+      actKnowledgeIncome,
+      actTime,
+      actKnowledge,
+      actInfinityUpgrade,
+      actChallenge,
+      actUnlockLayer,
+      actReset,
+      actBuy,
+    ]
+    for (const f of actions) {
+      if (f()) acted = true
+    }
+    return acted
+  }
+
   return {
-    name: 'greedy',
-    setTime(t) {
+    run,
+    setTime(t: Decimal) {
       now = t
     },
+  }
+}
+
+/**
+ * 贪心策略:能买就买、够格就重置、挑战按顺序做
+ * 不做任何"刻意操作"的成就(见测试与平衡.md的成就支线),得到的是自然推进的保守下界
+ */
+export function greedyPolicy(opts: GreedyOptions = GREEDY_DEFAULTS): BotPolicy {
+  const bot = makeActions(opts)
+  return {
+    name: 'greedy',
+    setTime: (t) => bot.setTime(t),
+    act: () => bot.run(),
+  }
+}
+
+/**阶段式策略参数(在贪心参数之上加"开局打法"与a24支线) */
+export interface PhasedOptions extends GreedyOptions {
+  /**
+   * 开局打法(只影响层级1的前两次重置):
+   * invest=人工打法:解锁层级1(算第一次重置)与第二次重置都攒到openGain才做,
+   *        且第一次重置后只买维度1、第二次重置后才买维度2
+   * fast=一够条件就重置(多次快速重置)
+   */
+  opening: 'invest' | 'fast'
+  /**invest打法下前两次重置要求的最低收益(点数);11=维度1(1点)+维度2(10点)的总价 */
+  openGain: number
+  /**是否做a24支线(层级1重置后开1秒窗口,用小步长抓"1游戏秒内再重置一次") */
+  huntA24: boolean
+  /**
+   * 是否做a27支线("我需要能量吗":层级1能量为0时一次重置拿到≥100点)
+   * 做法:在a27到手前完全不买层级1的维度(层级1能量只由维度1产出,不买就恒为0),
+   * 代价是拿不到层级1的能量加成,推进明显变慢;属于刻意操作,默认关闭
+   */
+  deliberateA27: boolean
+  /**
+   * 是否做a35支线("我需要重置吗":第1次层级1重置拿到≥1e4点)
+   * 做法:层级2解锁后,层级1的resetCount被层级2的重置清零,此时把层级1的重置门槛抬到1e4,
+   * 保证"层级1的下一次重置"就满足条件;默认关闭(会推迟重置节奏)
+   */
+  deliberateA35: boolean
+  /**a24窗口长度(游戏秒):成就要求层级0的resetTime<1秒,故窗口就是1秒 */
+  a24Window: number
+  /**a24窗口内使用的基础步长(游戏秒;必须远小于1,否则永远抓不到窗口) */
+  huntDt: number
+  /**诊断输出:每次层级1解锁/重置各报一行收益与节奏,便于对齐人工打法 */
+  onNote?: (text: string) => void
+}
+
+/**阶段式策略默认参数 */
+export const PHASED_DEFAULTS: PhasedOptions = {
+  ...GREEDY_DEFAULTS,
+  opening: 'invest',
+  openGain: 11,
+  huntA24: true,
+  deliberateA27: false,
+  deliberateA35: false,
+  a24Window: 1,
+  huntDt: 1 / 60,
+}
+
+/**
+ * 阶段式策略:把人工开局写成状态机,在贪心动作之上加阶段性门槛与成就支线
+ * 阶段:layer0(层级1之前) → layer1Open(前两次层级1重置) → progress(正常推进)
+ * - 开局按opening选择"人工打法"或"多次快速重置",两者可直接对比(见测试与平衡.md)
+ * - a24(速通高手)必做:没有它,层级2重置会把层级1点数清零,层级2能量就永远给不上加成。
+ *   它的条件是"层级1重置时层级0的resetTime<1秒",即层级1重置后层级0能在1游戏秒内重建到1e16,
+ *   故每次层级1重置后开一个1秒的小步长窗口,窗口内只看canReset就重置,把这个窗口抓成成就
+ */
+export function phasedPolicy(opts: PhasedOptions = PHASED_DEFAULTS): BotPolicy {
+  const invest = opts.opening == 'invest'
+  const openGain = invest ? Math.max(1, opts.openGain) : 1
+  let phase: 'layer0' | 'layer1Open' | 'progress' = 'layer0'
+  /**层级1已经历的重置次数(解锁层级1算第一次) */
+  let layer1Resets = 0
+  /**上一次层级1重置的时间:相邻两次的间隔就是"层级0重建到可重置"的耗时(a24要求<1秒) */
+  let lastResetAt: Decimal | undefined
+  /**a24小步长窗口的结束时间 */
+  let huntUntil = new Decimal(-1)
+  let a24Done = false
+  let now = new Decimal(0)
+  /**是否正在抓a24的1秒窗口 */
+  const hunting = () => opts.huntA24 && !a24Done && now.lt(huntUntil)
+
+  /**报一行层级1的重置节奏(收益/间隔/能量一起给,便于和人工开局对照) */
+  function noteLayer1(tag: string, gain: Decimal): void {
+    const gap = lastResetAt ? now.sub(lastResetAt) : undefined
+    opts.onNote?.(
+      `${phase == 'layer1Open' ? '[开局]' : '[层级1]'} t=${formatTime(now)} ${tag} 收益=${format(gain)}` +
+        (gap ? ` 距上次=${formatTime(gap)}` : '') +
+        ` 层级1点数=${format(getPoints([1]))} 能量=${format(getEnergy([1]))}`,
+    )
+    lastResetAt = now
+  }
+
+  const bot = makeActions(opts, {
+    now: () => now,
+    //开局:层级1的解锁本身就是第一次重置,故也要攒到要求的收益
+    unlockGain: () => (phase == 'layer0' ? openGain : 0),
+    //开局:第二次层级1重置同样攒到要求的收益
+    layer1Gain: () => {
+      if (phase == 'layer1Open') return openGain
+      //a35支线:层级2重置会把层级1的resetCount清零,故"层级1的第1次重置≥1e4点"要等层级2之后再抓
+      const L1 = getLayer([1])
+      const afterLayer2 = getOrderedLayers('asc').length > 2
+      if (opts.deliberateA35 && !hasAchievement('a35') && afterLayer2 && L1?.resetCount.eq(0))
+        return 1e4
+      return 0
+    },
+    //开局:先买维度1(1点)、第二次重置后再买维度2(10点),其余维度留到正常推进阶段
+    //a27支线:到手前完全不买层级1的维度(层级1能量恒为0)
+    layer1BuyLimit: () => {
+      if (opts.deliberateA27 && !hasAchievement('a27')) return 0
+      return phase == 'layer1Open' ? layer1Resets : Infinity
+    },
+    //开局按"买1个"来(等于人工点击:先维度1、再维度2);asc+买最大会把预算全砸在维度1上
+    buyAmount: () => (phase == 'layer1Open' ? 'one' : opts.buyAmount),
+    spamLayer1: () => hunting(),
+    onUnlock(pos, gain) {
+      if (compareLayer(pos, [1]) != 0) return
+      layer1Resets = 1
+      phase = 'layer1Open'
+      noteLayer1('解锁层级1(第1次重置)', gain)
+      huntUntil = now.add(opts.a24Window)
+    },
+    onReset(layer, gain) {
+      if (compareLayer(layer, [1]) != 0) return
+      layer1Resets++
+      noteLayer1(`第${layer1Resets}次层级1重置`, gain)
+      if (layer1Resets >= 2) phase = 'progress'
+      huntUntil = now.add(opts.a24Window)
+    },
+  })
+
+  return {
+    name: `phased/${opts.opening}`,
+    phase: () => phase,
+    setTime(t) {
+      now = t
+      bot.setTime(t)
+    },
+    /**
+     * 抓a24窗口时把步长压到huntDt(游戏秒):psdSpeed已含加速倍率,故换算成现实步长
+     * 注:时间扭曲(每帧加1%加速时间)不在此换算内,扭曲激活时窗口会被冲掉——与真实游玩一致
+     */
+    stepDt() {
+      if (!hunting()) return undefined
+      const speed = getPsdSpeed().toNumber()
+      return opts.huntDt / Math.max(1, isFinite(speed) ? speed : 1)
+    },
     act() {
-      //解锁了新层级说明变强了:放弃过的挑战重新试
-      const layers = getOrderedLayers('asc').length
-      if (layers > giveUpAtLayers) {
-        giveUpAtLayers = layers
-        giveUp = new Set()
-      }
-      let acted = false
-      const actions = [
-        actKnowledgeIncome,
-        actTime,
-        actKnowledge,
-        actInfinityUpgrade,
-        actChallenge,
-        actUnlockLayer,
-        actReset,
-        actBuy,
-      ]
-      for (const f of actions) {
-        if (f()) acted = true
+      const acted = bot.run()
+      if (!a24Done && hasAchievement('a24')) {
+        a24Done = true
+        opts.onNote?.(`[支线] t=${formatTime(now)} 拿到a24(速通高手):层级0的resetTime<1秒`)
       }
       return acted
     },
@@ -343,6 +578,11 @@ export interface SimRow {
   t: Decimal
   /**层级0点数 */
   points0: Decimal
+  /**
+   * 本取样区间内的层级0点数峰值(终局口径:点数会被重置反复削平,只看瞬时值会低估进度)
+   * 取样区间为"上一行到这一行之间",故表里每一行都是该行的区间峰值
+   */
+  points0Peak: Decimal
   /**世界层级数 */
   layerCount: number
   /**最高层级名 */
@@ -363,12 +603,22 @@ export interface SimRow {
   achievements: number
   /**层级结构丰富度:各层维度数+已购可购买种类+已购升级数之和 */
   structure: number
+  /**当前阶段名(仅阶段式策略有;用于看清"卡在哪个阶段") */
+  phase?: string
   /**该时刻的各层级状态(仅--verbose时收集;必须在取样当时抓,不能跑完再读) */
   layers?: string[]
 }
 
-/**取一次指标快照(时间用本次模拟的已过游戏时间,故载入旧存档也不会影响时间轴) */
-export function snapshot(elapsed: Decimal, verbose: boolean = false): SimRow {
+/**
+ * 取一次指标快照(时间用本次模拟的已过游戏时间,故载入旧存档也不会影响时间轴)
+ * @param peak0 本取样区间的层级0点数峰值(终局口径取区间峰值,见测试与平衡.md)
+ */
+export function snapshot(
+  elapsed: Decimal,
+  verbose: boolean = false,
+  phase?: string,
+  peak0?: Decimal,
+): SimRow {
   const layers = getOrderedLayers('asc')
   let structure = 0
   for (const e of layers) {
@@ -378,9 +628,11 @@ export function snapshot(elapsed: Decimal, verbose: boolean = false): SimRow {
   for (const v of Object.values(player.knowledgeUpgrades)) levels = levels.add(v)
   //最高层取"最后一个真实层级":getHighestActiveLayer可能返回临时层(下一层的预览),不适合进指标表
   const highest = layers[layers.length - 1]
+  const points0 = getPoints([0])
   return {
     t: elapsed,
-    points0: getPoints([0]),
+    points0,
+    points0Peak: peak0 ? Decimal.max(peak0, points0) : points0,
     layerCount: layers.length,
     highest: highest ? getLayerName(highest.pos) : '-',
     ip: player.infinityPoints,
@@ -391,6 +643,7 @@ export function snapshot(elapsed: Decimal, verbose: boolean = false): SimRow {
     challengeCompletions: totalChallengeCompletions(),
     achievements: player.achievements.length,
     structure,
+    phase,
     layers: verbose ? layerLines() : undefined,
   }
 }
@@ -464,7 +717,10 @@ export function runSim(opts: SimOptions): SimResult {
   const start = player.totalTime
   /**本次模拟已过的游戏时间 */
   const elapsed = () => player.totalTime.sub(start)
-  const rows: SimRow[] = [snapshot(new Decimal(0), opts.verbose)]
+  const phase = () => policy.phase?.()
+  /**本取样区间的层级0点数峰值(点数会被重置削平,故终局口径取区间峰值) */
+  let peak0 = getPoints([0])
+  const rows: SimRow[] = [snapshot(new Decimal(0), opts.verbose, phase(), peak0)]
   const startedMs = performance.now()
   let dt = opts.dt
   let frames = 0
@@ -472,6 +728,7 @@ export function runSim(opts: SimOptions): SimResult {
   let layerCount = rows[0]!.layerCount
   let resets = player.infinityResets.toString()
   let prevCompletions = totalChallengeCompletions().toString()
+  let achievements = new Set(player.achievements)
   while (elapsed().lt(seconds)) {
     //与mainLoop一致:现实时间累加 → 加速/时间扭曲作用到dt上 → gameLoop(帧内再乘每秒速度)
     addValue('realTime', new Decimal(dt))
@@ -481,8 +738,10 @@ export function runSim(opts: SimOptions): SimResult {
     frames++
     policy.setTime?.(elapsed())
     const acted = policy.act()
-    dt = acted ? opts.dt : Math.min(maxDt, dt * 2)
-    //进度事件:层级/无限重置/挑战完成各报一行,便于看清"卡在哪一步"
+    //策略要求小步长(如抓"1游戏秒内"的成就窗口)时一直用它,否则按"有动作=基础步长,没动作=逐步放大"
+    const requested = policy.stepDt?.()
+    dt = requested != undefined ? requested : acted ? opts.dt : Math.min(maxDt, dt * 2)
+    //进度事件:层级/无限重置/挑战完成/成就各报一行,便于看清"卡在哪一步"
     const t = elapsed().toFixed(1)
     const nowLayers = getOrderedLayers('asc').length
     if (nowLayers != layerCount) {
@@ -500,11 +759,19 @@ export function runSim(opts: SimOptions): SimResult {
       prevCompletions = nowCompletions
       opts.onEvent?.(`[挑战] t=${t}s 总完成次数=${nowCompletions}`)
     }
+    if (player.achievements.length != achievements.size) {
+      const fresh = [...player.achievements].filter((id) => !achievements.has(id))
+      achievements = new Set(player.achievements)
+      opts.onEvent?.(`[成就] t=${t}s 共${achievements.size}个 新解锁=${fresh.join(',')}`)
+    }
     if (elapsed().gte(nextRow)) {
       nextRow += opts.every
-      rows.push(snapshot(elapsed(), opts.verbose))
+      rows.push(snapshot(elapsed(), opts.verbose, phase(), peak0))
+      peak0 = getPoints([0])
+    } else {
+      peak0 = Decimal.max(peak0, getPoints([0]))
     }
   }
-  rows.push(snapshot(elapsed(), opts.verbose))
+  rows.push(snapshot(elapsed(), opts.verbose, phase(), peak0))
   return { rows, frames, realMs: performance.now() - startedMs }
 }
