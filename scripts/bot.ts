@@ -1,16 +1,20 @@
 //模拟玩家(机器人)与无头模拟引擎
 //契约:机器人只调用"按钮背后那层"的logic函数(与UI同源,见app/uiActions),不用调试指令、不直接改player状态
-//引擎复用app/core的gameLoop,保证帧内顺序与真实游玩完全一致;自适应步长:有动作时用基础步长,无动作时逐级放大
-//策略与口径见 docs/面向开发者/测试与平衡.md;sim.ts与endgame.ts都只是CLI外壳
+//引擎复用app/core的gameLoop与applyTimeResources,保证帧内顺序与时间规则都和真实游玩一致
+//自适应步长:有动作时用基础步长,无动作时逐级放大;假时钟让"现实时间"随模拟时间流逝(签到/答题冷却都按它走)
+//策略与口径见 docs/面向开发者/测试与平衡.md
 import Decimal from 'break_eternity.js'
 import { player } from '@/data/player'
+import { addValue } from '@/save/save'
 import {
   getHighestActiveLayer,
   getLayerName,
   getOrderedLayers,
+  getOrderedTempLayers,
   getPoints,
   totalChallengeCompletions,
 } from '@/access'
+import { format, formatTime, formatWhole } from '@/tools/format'
 import { getLayerOrder, isLayer0 } from '@/tools/ordinal'
 import { canBuyUpgrade, getUpgrades } from '@/compute/upgrades'
 import { canReset, resetGain } from '@/compute/prestige'
@@ -20,11 +24,25 @@ import {
   getInfinityUpgrades,
   infinityGain,
 } from '@/compute/infinity'
-import { canBuyKnowledgeUpgrade, getKnowledgeUpgrade, knowledgeAmount } from '@/compute/knowledge'
-import { buyUpgrade, maxBuyAll } from '@/logic/purchase'
+import {
+  canBuyKnowledgeUpgrade,
+  getBoostPresets,
+  getKnowledgeUpgrade,
+  hasKnowledge,
+  knowledgeAmount,
+} from '@/compute/knowledge'
+import { buyBuyableMax, buyDimensionMax, buyUpgrade } from '@/logic/purchase'
+import { getBuyables, isUnlocked as isBuyableUnlocked } from '@/compute/buyables'
 import { doReset, findUnlockableTempLayer } from '@/logic/reset'
 import { buyInfinityUpgrade, doInfinityReset } from '@/logic/infinity'
-import { buyKnowledgeUpgrade } from '@/logic/knowledge'
+import { buyKnowledgeUpgrade, buyOfflineTimePct, convertOfflineToWarp } from '@/logic/knowledge'
+import {
+  checkedInToday,
+  doCheckin,
+  getQuizQuestion,
+  quizAvailable,
+  submitQuizAnswer,
+} from '@/logic/commands'
 import {
   challengeDone,
   completions,
@@ -35,7 +53,7 @@ import {
   isForcedActive,
   isUnlocked,
 } from '@/logic/challenges'
-import { gameLoop } from '@/app/core'
+import { applyTimeResources, gameLoop } from '@/app/core'
 import { freshSave, loadRealSave } from './helpers'
 
 /**机器人策略:每步调用一次act;返回true表示这一步做了动作(自适应步长据此保持小步长) */
@@ -51,6 +69,26 @@ export function nonePolicy(): BotPolicy {
   return { name: 'none', act: () => false }
 }
 
+/**假时钟:把全局Date换成"起点+已过现实时间"的实现,返回"推进现实时间"的函数 */
+export function installFakeClock(startMs: number = Date.now()): (realSeconds: number) => void {
+  const RealDate = Date
+  let fakeMs = startMs
+  const FakeDate = class extends RealDate {
+    constructor(...args: unknown[]) {
+      //游戏只用到无参(现在)与单参(时间戳/字符串)两种构造
+      if (args.length == 0) super(fakeMs)
+      else super(args[0] as number)
+    }
+    static now(): number {
+      return fakeMs
+    }
+  }
+  globalThis.Date = FakeDate as DateConstructor
+  return (realSeconds: number) => {
+    fakeMs += realSeconds * 1000
+  }
+}
+
 /**贪心策略参数 */
 export interface GreedyOptions {
   /**层级重置:本次收益 ≥ 当前点数×该倍率 就重置 */
@@ -63,8 +101,19 @@ export interface GreedyOptions {
   challengeTimeout: number
   /**是否主动进挑战:进挑战会强制重置(无限挑战更是直接无限重置),从真实存档继续做实验时可关掉 */
   challenges: boolean
+  /**解锁新层级的最低层级0点数:解锁会擦掉本层以下的所有进度,太早解锁等于把刚攒的势头扔掉(0=够条件就解锁) */
+  unlockGate: number
   /**每步购买知识升级的级数(1更接近真人:攒够了才买一级) */
   buyPerStep: number
+  /**
+   * 维度购买顺序:asc=从维度1开始(缺省)。
+   * 维度1生产点数/能量,最不该被饿着;游戏自带的"全部最大"是desc(从最高维度开始),会把预算全花在最高维度上
+   */
+  buyOrder: 'asc' | 'desc'
+  /**每步最多用多少比例的知识换离线时间(需知识升级"时间感知";0=不换) */
+  knowledgeToTime: number
+  /**留给"加速"的离线时间储备(秒),超出的部分转成加速时间(需"时间存储") */
+  boostReserve: number
 }
 
 /**贪心策略默认参数 */
@@ -74,7 +123,12 @@ export const GREEDY_DEFAULTS: GreedyOptions = {
   infinityGain: 1,
   challengeTimeout: 600,
   challenges: true,
+  //1e100是成就a28(Googol)的阈值,也是挑战页的解锁条件:先拿到挑战再解锁更高层级,否则会把势头擦掉
+  unlockGate: 1e100,
   buyPerStep: 1,
+  buyOrder: 'asc',
+  knowledgeToTime: 0.1,
+  boostReserve: 3600,
 }
 
 /**贪心策略的知识升级优先顺序:先提高知识收入,再买永久产出,最后QoL与时间类 */
@@ -109,6 +163,44 @@ export function greedyPolicy(opts: GreedyOptions = GREEDY_DEFAULTS): BotPolicy {
   let giveUpAtLayers = 0
   let challengeEnteredAt = new Decimal(0)
   let now = new Decimal(0)
+
+  /**知识收入:签到与答题(都按现实时间,由假时钟推进);答题按"完美玩家"处理(直接给出正确答案) */
+  function actKnowledgeIncome(): boolean {
+    let acted = false
+    if (hasKnowledge('command-checkin') && !checkedInToday() && doCheckin()) acted = true
+    if (hasKnowledge('command-quiz') && quizAvailable()) {
+      const q = getQuizQuestion()
+      const answer =
+        q.options != null && q.correctIndex != null ? q.correctIndex : (q.answer?.toString() ?? '')
+      submitQuizAnswer(q, answer)
+      acted = true
+    }
+    return acted
+  }
+
+  /**时间类动作:知识换离线时间、多余的离线时间存成加速时间、选一个"撑得住一分钟"的加速档位 */
+  function actTime(): boolean {
+    let acted = false
+    if (opts.knowledgeToTime > 0 && hasKnowledge('time-offline') && player.knowledge.gt(0)) {
+      if (buyOfflineTimePct(opts.knowledgeToTime).gt(0)) acted = true
+    }
+    if (hasKnowledge('time-store') && player.offlineTime.gt(opts.boostReserve)) {
+      const extra = player.offlineTime.sub(opts.boostReserve)
+      if (convertOfflineToWarp(extra).gt(0)) acted = true
+    }
+    //加速档位:只在能提高时设置;离线时间耗尽由applyTimeResources自动关闭(避免每步来回切)
+    if (hasKnowledge('time-boost')) {
+      const seconds = player.offlineTime.toNumber()
+      const best = getBoostPresets()
+        .filter((m) => m > 1 && (seconds >= 60 * (m - 1) || !isFinite(seconds)))
+        .pop()
+      if (best != undefined && best > player.boostSpeed.toNumber()) {
+        player.boostSpeed = new Decimal(best)
+        acted = true
+      }
+    }
+    return acted
+  }
 
   /**买知识升级:按优先级买第一个买得起的 */
   function actKnowledge(): boolean {
@@ -157,6 +249,8 @@ export function greedyPolicy(opts: GreedyOptions = GREEDY_DEFAULTS): BotPolicy {
 
   /**解锁新层级:临时层满足解锁条件时把它重置出来(与手动点击临时层等价) */
   function actUnlockLayer(): boolean {
+    //第一个层级(层级1)不设门槛:它是前期唯一的推进手段;解锁更高层级会擦掉已发展的层,故要等势头够大
+    if (getOrderedLayers('asc').length > 1 && getPoints([0]).lt(opts.unlockGate)) return false
     const temp = findUnlockableTempLayer()
     if (!temp) return false
     const unlocked = doReset(temp)
@@ -171,11 +265,12 @@ export function greedyPolicy(opts: GreedyOptions = GREEDY_DEFAULTS): BotPolicy {
       if (isLayer0(e.pos)) continue
       if (!e.L.active || !canReset(e.pos)) continue
       const gain = resetGain(e.pos)
-      //够本才重置:收益至少是当前点数的resetMult倍;长时间没进展时放宽到"收益≥当前点数"。
-      //绝不在收益更小时重置:那只会把下层进度与本层能量反复清零,峰值永远不涨(抖动)
-      const enough = gain.gte(e.L.points.mul(opts.resetMult))
-      const stalled = e.L.resetTime.gte(opts.resetTime) && gain.gte(e.L.points)
-      if ((gain.gt(0) && (e.L.points.eq(0) || enough)) || stalled) {
+      //够本才重置:本次收益至少是"历史最佳收益"的resetMult倍(所以间隔会自然拉长,收益指数增长);
+      //长时间没进展时放宽到"略优于历史最佳"。
+      //用bestPoints而不是当前点数:买维度会把点数花到0,拿当前点数当基准会导致每步都"够本"→ 无限抖动
+      const enough = gain.gte(e.L.bestPoints.mul(opts.resetMult))
+      const stalled = e.L.resetTime.gte(opts.resetTime) && gain.gte(e.L.bestPoints)
+      if (gain.gt(0) && (e.L.bestPoints.eq(0) || enough || stalled)) {
         doReset(e.pos)
         return true
       }
@@ -187,19 +282,26 @@ export function greedyPolicy(opts: GreedyOptions = GREEDY_DEFAULTS): BotPolicy {
     return false
   }
 
-  /**购买:每层先买能买的升级(买最大会把点数花光,故升级优先),再一键买满维度与可购买 */
+  /**购买:每层先买能买的升级,再按buyOrder买满各维度,最后买可购买 */
   function actBuy(): boolean {
     let acted = false
     for (const e of getOrderedLayers('desc')) {
       if (!e.L.active) continue
-      for (const u of getUpgrades(getLayerOrder(e.pos))) {
+      const order = getLayerOrder(e.pos)
+      for (const u of getUpgrades(order)) {
         if (!canBuyUpgrade(e.pos, u.id)) continue
         buyUpgrade(e.pos, u.id)
         acted = true
       }
-      const before = e.L.points
-      maxBuyAll(e.pos)
-      if (!e.L.points.eq(before)) acted = true
+      const n = e.L.dimensions.length
+      for (let i = 0; i < n; i++) {
+        const id = opts.buyOrder == 'asc' ? i : n - 1 - i
+        if (buyDimensionMax(e.pos, id).gt(0)) acted = true
+      }
+      for (const b of getBuyables(order)) {
+        if (!isBuyableUnlocked(e.pos, b.id)) continue
+        if (buyBuyableMax(e.pos, b.id).gt(0)) acted = true
+      }
     }
     return acted
   }
@@ -218,6 +320,8 @@ export function greedyPolicy(opts: GreedyOptions = GREEDY_DEFAULTS): BotPolicy {
       }
       let acted = false
       const actions = [
+        actKnowledgeIncome,
+        actTime,
         actKnowledge,
         actInfinityUpgrade,
         actChallenge,
@@ -259,10 +363,12 @@ export interface SimRow {
   achievements: number
   /**层级结构丰富度:各层维度数+已购可购买种类+已购升级数之和 */
   structure: number
+  /**该时刻的各层级状态(仅--verbose时收集;必须在取样当时抓,不能跑完再读) */
+  layers?: string[]
 }
 
 /**取一次指标快照(时间用本次模拟的已过游戏时间,故载入旧存档也不会影响时间轴) */
-export function snapshot(elapsed: Decimal): SimRow {
+export function snapshot(elapsed: Decimal, verbose: boolean = false): SimRow {
   const layers = getOrderedLayers('asc')
   let structure = 0
   for (const e of layers) {
@@ -285,7 +391,28 @@ export function snapshot(elapsed: Decimal): SimRow {
     challengeCompletions: totalChallengeCompletions(),
     achievements: player.achievements.length,
     structure,
+    layers: verbose ? layerLines() : undefined,
   }
+}
+
+/**
+ * 各层级状态的多行文本(诊断用:看清机器人把资源花在哪一层、临时层何时可解锁)
+ * 只在--verbose下打印,不进指标表
+ */
+export function layerLines(): string[] {
+  const out: string[] = []
+  for (const e of getOrderedLayers('asc')) {
+    const dims = e.L.dimensions.map((d) => format(d[1])).join(',')
+    out.push(
+      `    层${e.key} 点数=${format(e.L.points)} 能量=${format(e.L.energy)}` +
+        ` 重置次数=${formatWhole(e.L.resetCount)} 计时=${formatTime(e.L.resetTime)}` +
+        ` 可重置=${canReset(e.pos)} 收益=${format(resetGain(e.pos))} 维度=[${dims}]`,
+    )
+  }
+  for (const e of getOrderedTempLayers()) {
+    out.push(`    临时层${e.key} 可解锁=${canReset(e.pos)} 收益=${format(resetGain(e.pos))}`)
+  }
+  return out
 }
 
 /**一次模拟的配置 */
@@ -302,6 +429,8 @@ export interface SimOptions {
   policy?: BotPolicy
   /**是否无视真实存档、从空白档开始 */
   fresh?: boolean
+  /**是否在每行指标快照后附上各层级状态(诊断用) */
+  verbose?: boolean
   /**进度事件回调(解锁层级/无限重置/挑战完成) */
   onEvent?: (text: string) => void
 }
@@ -321,6 +450,8 @@ export interface SimResult {
  * 所以载入一个玩了13天的真实存档也能只跑"接下来的N分钟"
  */
 export function runSim(opts: SimOptions): SimResult {
+  //假时钟:签到/答题冷却/日志时间都按"现实时间"走,而模拟里现实时间就是本次跑过的秒数
+  const advanceClock = installFakeClock()
   if (opts.fresh) {
     freshSave()
     console.log('  从空白档开始(fresh)')
@@ -333,8 +464,8 @@ export function runSim(opts: SimOptions): SimResult {
   const start = player.totalTime
   /**本次模拟已过的游戏时间 */
   const elapsed = () => player.totalTime.sub(start)
-  const rows: SimRow[] = [snapshot(new Decimal(0))]
-  const started = Date.now()
+  const rows: SimRow[] = [snapshot(new Decimal(0), opts.verbose)]
+  const startedMs = performance.now()
   let dt = opts.dt
   let frames = 0
   let nextRow = opts.every
@@ -342,7 +473,11 @@ export function runSim(opts: SimOptions): SimResult {
   let resets = player.infinityResets.toString()
   let prevCompletions = totalChallengeCompletions().toString()
   while (elapsed().lt(seconds)) {
-    gameLoop(new Decimal(dt))
+    //与mainLoop一致:现实时间累加 → 加速/时间扭曲作用到dt上 → gameLoop(帧内再乘每秒速度)
+    addValue('realTime', new Decimal(dt))
+    const warped = applyTimeResources(new Decimal(dt))
+    gameLoop(warped)
+    advanceClock(dt)
     frames++
     policy.setTime?.(elapsed())
     const acted = policy.act()
@@ -367,9 +502,9 @@ export function runSim(opts: SimOptions): SimResult {
     }
     if (elapsed().gte(nextRow)) {
       nextRow += opts.every
-      rows.push(snapshot(elapsed()))
+      rows.push(snapshot(elapsed(), opts.verbose))
     }
   }
-  rows.push(snapshot(elapsed()))
-  return { rows, frames, realMs: Date.now() - started }
+  rows.push(snapshot(elapsed(), opts.verbose))
+  return { rows, frames, realMs: performance.now() - startedMs }
 }

@@ -7,6 +7,9 @@
 //  --fresh    无视真实存档,从空白档开始
 //  --max-step 无动作时步长放大的上限(缺省60;等于步长即固定步长)
 //  --no-challenges 机器人不主动进挑战(从真实存档继续做实验时用:进挑战会强制重置甚至无限重置)
+//  --unlock-gate=点数 解锁新层级所需的最低层级0点数(缺省1e100=先拿到a28与挑战;填1=一够条件就解锁)
+//  --reset-mult=倍数   层级重置要求"本次收益 ≥ 历史最佳收益×该倍数"(缺省2;调小=重置更频繁)
+//  --verbose  每行指标快照后附上各层级状态(诊断用)
 //不指定--bot时按挂机观察跑(与旧版行为一致);策略与口径见 docs/面向开发者/测试与平衡.md
 import { format, formatTime, formatWhole } from '@/tools/format'
 import { GREEDY_DEFAULTS, greedyPolicy, nonePolicy, runSim, type SimRow } from './bot'
@@ -31,6 +34,8 @@ const step = arg(1, 1)
 const every = arg(2, 60)
 const bot = flag('bot') ?? (has('bot') ? 'greedy' : 'none')
 const maxStep = Number(flag('max-step') ?? 60)
+const unlockGate = Number(flag('unlock-gate') ?? 0)
+const resetMult = Number(flag('reset-mult') ?? 0)
 
 console.log('=== 平衡模拟 ===')
 console.log(`  策略 ${bot},基础步长 ${step} 秒,共 ${minutes} 分钟游戏时间,每 ${every} 秒打印一行`)
@@ -40,10 +45,16 @@ const result = runSim({
   maxDt: bot == 'none' ? step : maxStep,
   every,
   fresh: has('fresh'),
+  verbose: has('verbose'),
   policy:
     bot == 'none'
       ? nonePolicy()
-      : greedyPolicy({ ...GREEDY_DEFAULTS, challenges: !has('no-challenges') }),
+      : greedyPolicy({
+          ...GREEDY_DEFAULTS,
+          challenges: !has('no-challenges'),
+          unlockGate: unlockGate > 0 ? unlockGate : GREEDY_DEFAULTS.unlockGate,
+          resetMult: resetMult > 0 ? resetMult : GREEDY_DEFAULTS.resetMult,
+        }),
   onEvent: (text) => console.log(`  ${text}`),
 })
 
@@ -63,7 +74,10 @@ function row(r: SimRow): string {
   ].join(' ')
 }
 console.log('=== 指标快照 ===')
-for (const r of result.rows) console.log(`  ${row(r)}`)
+for (const r of result.rows) {
+  console.log(`  ${row(r)}`)
+  for (const line of r.layers ?? []) console.log(line)
+}
 const last = result.rows[result.rows.length - 1]!
 console.log(
   `跑了 ${result.frames} 步,${(result.realMs / 1000).toFixed(1)} 秒现实时间` +

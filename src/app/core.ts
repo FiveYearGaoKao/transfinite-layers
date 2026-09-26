@@ -77,6 +77,31 @@ export function gameLoop(dt: Decimal) {
 export function pause() {
   player.paused = !player.paused
 }
+/**
+ * 把加速与时间扭曲作用到本帧的dt上,返回真正喂给gameLoop的dt
+ * - 加速:稳定消耗离线时间,不足时自动关闭(消耗按未放大的dt计算,故加速先于扭曲)
+ * - 时间扭曲:始终自动开启,加速时间≥1秒时每帧消耗1%
+ * 抽成函数是为了让无头模拟(scripts/bot.ts)走同一套时间规则,而不是自己重写一遍(否则等于免费加速)
+ */
+export function applyTimeResources(dt: Decimal): Decimal {
+  let out = dt
+  if (player.boostSpeed.gt(1)) {
+    const consume = dt.mul(player.boostSpeed.sub(1))
+    if (player.offlineTime.gte(consume)) {
+      addValue('offlineTime', consume.neg())
+    } else {
+      addValue('offlineTime', player.offlineTime.neg())
+      player.boostSpeed = new Decimal(1)
+      addLog('warning', '加速因离线时间不足而关闭')
+    }
+  }
+  if (player.warpTime.gte(1)) {
+    const consumeWarpTime: Decimal = player.warpTime.mul(0.01)
+    addValue('warpTime', consumeWarpTime.neg())
+    out = out.add(consumeWarpTime)
+  }
+  return out
+}
 /**游戏前进1帧 */
 export function tick() {
   addValue('realTime', new Decimal(1 / FPS))
@@ -114,23 +139,7 @@ export function mainLoop() {
     }
   } else {
     //加速先于时间扭曲计算,在未被扭曲放大的dt上消耗,使加速消耗的离线时间较小
-    if (player.boostSpeed.gt(1)) {
-      //加速:稳定消耗离线时间,不足时关闭
-      const consume = dt.mul(player.boostSpeed.sub(1))
-      if (player.offlineTime.gte(consume)) {
-        addValue('offlineTime', consume.neg())
-      } else {
-        addValue('offlineTime', player.offlineTime.neg())
-        player.boostSpeed = new Decimal(1)
-        addLog('warning', '加速因离线时间不足而关闭')
-      }
-    }
-    //时间扭曲:始终自动开启,加速时间>=1秒时每帧消耗1%,快速消耗
-    if (player.warpTime.gte(1)) {
-      const consumeWarpTime: Decimal = player.warpTime.mul(0.01)
-      addValue('warpTime', consumeWarpTime.neg())
-      dt = dt.add(consumeWarpTime)
-    }
+    dt = applyTimeResources(dt)
     addValue('realTime', realDt)
     gameLoop(dt)
   }
