@@ -175,7 +175,7 @@ export const GREEDY_DEFAULTS: GreedyOptions = {
   resetMult: 2,
   resetTime: Infinity,
   infinityGain: 1,
-  challengeTimeout: 3600,
+  challengeTimeout: 7200,
   challengeStallTime: 900,
   challengeRetry: 1800,
   challengeReady: 10,
@@ -338,8 +338,8 @@ function makeActions(opts: GreedyOptions, hooks: ActionHooks = {}) {
       return false
     }
     if (!opts.challenges) return false
-    //只考虑普通挑战:无限挑战会强制无限重置(整局重开),不属于"层级2→开挑战"这一段
-    const unlocked = getAllChallenges().filter((d) => !isInfinityChallenge(d) && isUnlocked(d))
+    //无限挑战(需iu15)整局无限重置,没有"目标层"可准备,只按目标资源峰值判;普通挑战要先备好目标层的维度3
+    const unlocked = getAllChallenges().filter((d) => isUnlocked(d))
     //在挑战外取样各挑战的目标资源峰值:只有"以前轻松达到过目标"才值得进去
     for (const d of unlocked) {
       const peak = goalPeak.get(d.id)
@@ -348,11 +348,13 @@ function makeActions(opts: GreedyOptions, hooks: ActionHooks = {}) {
     }
     const candidates = unlocked.filter((d) => {
       if (giveUp.get(d.id)?.gt(time()) ?? false) return false
-      //进挑战会把目标层以下的升级全部清掉,但**不动目标层自身**:目标层的维度链会留下来,
-      //所以要先把目标层的维度3(约100点数)买出来,靠它的能量链把下层重新拉起来
-      const target = challengeResetTarget(d)
-      if (target == undefined || dimensionAmount(target, opts.challengePrepareDim).lte(0))
-        return false
+      if (!isInfinityChallenge(d)) {
+        //进挑战会把目标层以下的升级全部清掉,但**不动目标层自身**:目标层的维度链会留下来,
+        //所以要先把目标层的维度3(约100点数)买出来,靠它的能量链把下层重新拉起来
+        const target = challengeResetTarget(d)
+        if (target == undefined || dimensionAmount(target, opts.challengePrepareDim).lte(0))
+          return false
+      }
       const peak = goalPeak.get(d.id)
       return peak != undefined && peak.gte(challengeGoal(d).mul(opts.challengeReady))
     })
