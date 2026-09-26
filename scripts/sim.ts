@@ -60,7 +60,8 @@ const opening = flag('opening') == 'fast' ? 'fast' : 'invest'
 const openGain = Number(flag('open-gain') ?? 0)
 const nextGain = Number(flag('next-gain') ?? 0)
 const huntDt = Number(flag('hunt-dt') ?? 0)
-const buyAmount: 'one' | 'max' = flag('buy-amount') == 'one' ? 'one' : 'max'
+const buyAmount: 'one' | 'max' | 'fill' =
+  flag('buy-amount') == 'one' ? 'one' : flag('buy-amount') == 'fill' ? 'fill' : 'max'
 
 /**按命令行开关构造机器人策略 */
 function makePolicy(): BotPolicy {

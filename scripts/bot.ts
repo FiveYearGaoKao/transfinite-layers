@@ -8,6 +8,7 @@ import { player } from '@/data/player'
 import type { LayerId } from '@/data/types'
 import { addValue } from '@/save/save'
 import {
+  dimensionAmount,
   getEnergy,
   getHighestActiveLayer,
   getLayer,
@@ -20,7 +21,7 @@ import {
 } from '@/access'
 import { format, formatTime, formatWhole } from '@/tools/format'
 import { compareLayer, getLayerOrder, isLayer0 } from '@/tools/ordinal'
-import { canBuyUpgrade, getUpgrades, hasUpgrade } from '@/compute/upgrades'
+import { canBuyUpgrade, getUpgrades } from '@/compute/upgrades'
 import { canReset, resetGain } from '@/compute/prestige'
 import {
   canBuyInfinityUpgrade,
@@ -125,8 +126,13 @@ export interface GreedyOptions {
   resetTime: number
   /**无限重置:收益达到该IP值才重置 */
   infinityGain: number
-  /**挑战最长尝试时间(游戏秒),超时退出并暂时放弃 */
+  /**挑战最长尝试时间(游戏秒,硬上限) */
   challengeTimeout: number
+  /**
+   * 挑战内"停滞"判据:目标资源在这么多秒内没有涨到 1.5 倍就放弃
+   * (固定时限常在"再攒一轮就完成"时退出:实测 c1 里层级1点数 30 分钟涨到 3e3,目标 1e5)
+   */
+  challengeStallTime: number
   /**挑战超时后多久可以再试(游戏秒);0=不再试。变强了才值得重试,故不是"一失败就永久放弃" */
   challengeRetry: number
   /**
@@ -134,6 +140,12 @@ export interface GreedyOptions {
    * 进/退挑战都会强制重置目标层(连带清空下层),没把握就进去只会白扔一轮
    */
   challengeReady: number
+  /**
+   * 进挑战前要求"目标层已经买出维度N"(0基编号,缺省2=维度3):
+   * 挑战的强制重置**不动目标层自身**,目标层的维度链(维度3→2→1→能量)会留下来,
+   * 靠它才把下层重新拉起来(人工经验:层级2攒约100点数买出维度3就能打 c1)
+   */
+  challengePrepareDim: number
   /**是否主动进挑战:进挑战会强制重置(无限挑战更是直接无限重置),从真实存档继续做实验时可关掉 */
   challenges: boolean
   /**解锁新层级的最低层级0点数:解锁会擦掉本层以下的所有进度,太早解锁等于把刚攒的势头扔掉(0=够条件就解锁) */
@@ -146,10 +158,12 @@ export interface GreedyOptions {
    */
   buyOrder: 'asc' | 'desc'
   /**
-   * 每次买几个:one=每个维度/可购买只买1个(接近早期手动点击:先维度1、再维度2),
-   * max=按预算买最大(游戏里"购买模式:买最大")。asc+max会把预算全砸在维度1上
+   * 每次买几个:
+   * one=每个维度/可购买只买1个;max=按预算买最大(游戏里"购买模式:买最大");
+   * fill=先把每个维度都买出1个(维链必须先接上:维度2喂维度1、维度3喂维度2…),买齐后按buyOrder买最大。
+   * 注意asc+max会把预算全砸在维度1上,新解锁的层级会永远买不出维度2/3
    */
-  buyAmount: 'one' | 'max'
+  buyAmount: 'one' | 'max' | 'fill'
   /**每步最多用多少比例的知识换离线时间(需知识升级"时间感知";0=不换) */
   knowledgeToTime: number
   /**留给"加速"的离线时间储备(秒),超出的部分转成加速时间(需"时间存储") */
@@ -161,9 +175,11 @@ export const GREEDY_DEFAULTS: GreedyOptions = {
   resetMult: 2,
   resetTime: Infinity,
   infinityGain: 1,
-  challengeTimeout: 1800,
+  challengeTimeout: 3600,
+  challengeStallTime: 900,
   challengeRetry: 1800,
   challengeReady: 10,
+  challengePrepareDim: 2,
   challenges: true,
   //1e100是成就a28(Googol)的阈值,也是挑战页的解锁条件:先拿到挑战再解锁更高层级,否则会把势头擦掉
   unlockGate: 1e100,
@@ -211,7 +227,7 @@ interface ActionHooks {
   /**紧急重置层级1:只看canReset、不看收益(抓a24的"1游戏秒内再重置一次"窗口) */
   spamLayer1?(): boolean
   /**本步每次买几个(覆盖GreedyOptions.buyAmount) */
-  buyAmount?(): 'one' | 'max'
+  buyAmount?(): 'one' | 'max' | 'fill'
   /**发生了一次真实层级重置 */
   onReset?(layer: LayerId, gain: Decimal): void
   /**解锁了一个新层级 */
@@ -229,6 +245,9 @@ function makeActions(opts: GreedyOptions, hooks: ActionHooks = {}) {
   const goalPeak = new Map<string, Decimal>()
   let giveUpAtLayers = 0
   let challengeEnteredAt = new Decimal(0)
+  /**本次挑战里目标资源的最好值与其时间(推进式超时用) */
+  let challengeBest: Decimal | undefined
+  let challengeBestAt = new Decimal(0)
   let now = new Decimal(0)
   /**当前时间:阶段式策略注入自己的时间轴,贪心策略用setTime喂进来的时间 */
   const time = () => hooks.now?.() ?? now
@@ -303,7 +322,15 @@ function makeActions(opts: GreedyOptions, hooks: ActionHooks = {}) {
         exitChallenge(active)
         return true
       }
-      if (time().sub(challengeEnteredAt).gte(opts.challengeTimeout)) {
+      //推进式超时:目标资源还在涨就别退出;只有"停滞"或超过硬上限才放弃
+      const cur = challengeResource(active)
+      if (challengeBest == undefined || cur.gte(challengeBest.mul(1.5))) {
+        challengeBest = cur
+        challengeBestAt = time()
+      }
+      const stalled = time().sub(challengeBestAt).gte(opts.challengeStallTime)
+      const overCap = time().sub(challengeEnteredAt).gte(opts.challengeTimeout)
+      if (stalled || overCap) {
         exitChallenge(active)
         giveUp.set(active.id, time().add(opts.challengeRetry))
         return true
@@ -321,10 +348,11 @@ function makeActions(opts: GreedyOptions, hooks: ActionHooks = {}) {
     }
     const candidates = unlocked.filter((d) => {
       if (giveUp.get(d.id)?.gt(time()) ?? false) return false
-      //进出挑战会把目标层以下的升级全部清掉(forceClearUpgrades):没有上层的"软重置(u9)"接手,
-      //下层点数就只能从1点自己重建,目标在时限内几乎不可能完成 → 白扔一轮,故必须先有u9
+      //进挑战会把目标层以下的升级全部清掉,但**不动目标层自身**:目标层的维度链会留下来,
+      //所以要先把目标层的维度3(约100点数)买出来,靠它的能量链把下层重新拉起来
       const target = challengeResetTarget(d)
-      if (target == undefined || !hasUpgrade(target, 9)) return false
+      if (target == undefined || dimensionAmount(target, opts.challengePrepareDim).lte(0))
+        return false
       const peak = goalPeak.get(d.id)
       return peak != undefined && peak.gte(challengeGoal(d).mul(opts.challengeReady))
     })
@@ -332,6 +360,7 @@ function makeActions(opts: GreedyOptions, hooks: ActionHooks = {}) {
     if (!target) return false
     enterChallenge(target)
     challengeEnteredAt = time()
+    challengeBest = undefined
     return true
   }
 
@@ -408,13 +437,18 @@ function makeActions(opts: GreedyOptions, hooks: ActionHooks = {}) {
         buyUpgrade(e.pos, u.id)
         acted = true
       }
-      //开局只允许买"计划里那一个"维度(先维度1、第二次重置后再买维度2),其余留给正常推进阶段
+      //开局只允许买"计划里那一个"维度(先维度1、第一次重置后再买维度2),其余留给正常推进阶段
       const limit = compareLayer(e.pos, [1]) == 0 ? layer1Limit : Infinity
       const n = e.L.dimensions.length
+      //fill:本层还有维度没买出来时只每个买1个(把维链接上),买齐后才按buyOrder买最大
+      const fill =
+        amount == 'fill' &&
+        e.L.dimensions.some((_d, i) => i < limit && dimensionAmount(e.pos, i, 1).lte(0))
       for (let i = 0; i < n; i++) {
         const id = opts.buyOrder == 'asc' ? i : n - 1 - i
         if (id >= limit) continue
-        const spent = amount == 'one' ? buyDimension(e.pos, id, 1) : buyDimensionMax(e.pos, id)
+        const one = amount == 'one' || fill
+        const spent = one ? buyDimension(e.pos, id, 1) : buyDimensionMax(e.pos, id)
         if (spent.gt(0)) acted = true
       }
       for (const b of getBuyables(order)) {
@@ -475,12 +509,12 @@ export function greedyPolicy(opts: GreedyOptions = GREEDY_DEFAULTS): BotPolicy {
 export interface PhasedOptions extends GreedyOptions {
   /**
    * 开局打法(只影响层级1的前两次重置):
-   * invest=人工打法:解锁层级1(算第一次重置)与第二次重置都攒到openGain才做,
-   *        且第一次重置后只买维度1、第二次重置后才买维度2
-   * fast=一够条件就重置(多次快速重置)
+   * invest=人工打法:层级1一够条件就解锁(人工约 2 分钟),之后的**前两次层级1重置**攒到openGain才做,
+   *        且第1次重置后只买维度1、第2次重置后才买维度2
+   * fast=解锁后一够条件(收益≥1)就重置层级1(多次快速重置)
    */
   opening: 'invest' | 'fast'
-  /**invest打法下前两次重置要求的最低收益(点数);11=维度1(1点)+维度2(10点)的总价 */
+  /**invest打法下前两次层级1重置要求的最低收益(点数);11=维度1(1点)+维度2(10点)的总价 */
   openGain: number
   /**
    * 解锁层级2及以上要求的临时层收益(点数):临时层收益=(下层点数/1e4)^0.25,
@@ -514,6 +548,7 @@ export const PHASED_DEFAULTS: PhasedOptions = {
   ...GREEDY_DEFAULTS,
   opening: 'invest',
   openGain: 11,
+  challengePrepareDim: 2,
   nextLayerGain: 1,
   huntA24: true,
   deliberateA27: false,
@@ -560,12 +595,10 @@ export function phasedPolicy(opts: PhasedOptions = PHASED_DEFAULTS): BotPolicy {
     now: () => now,
     //解锁层级2及以上不看层级0点数,只看"a24到手 + 临时层收益够"(见unlockGain)
     unlockGate: () => 0,
-    //开局(层级1):解锁本身就是第一次重置,故也要攒到要求的收益
-    //层级2及以上:a24必做——没有它,层级2一重置就把层级1点数清零,层级2能量加成没有对象可乘
+    //层级1一够条件就解锁(人工约2分钟);层级2及以上:a24必做,再要求临时层收益≥nextLayerGain
     unlockGain: () => {
-      if (phase == 'layer0') return openGain
-      if (!hasAchievement('a24')) return Infinity
-      return opts.nextLayerGain
+      if (phase == 'layer0') return 1
+      return hasAchievement('a24') ? opts.nextLayerGain : Infinity
     },
     //开局:第二次层级1重置同样攒到要求的收益
     layer1Gain: () => {
@@ -577,20 +610,21 @@ export function phasedPolicy(opts: PhasedOptions = PHASED_DEFAULTS): BotPolicy {
         return 1e4
       return 0
     },
-    //开局:先买维度1(1点)、第二次重置后再买维度2(10点),其余维度留到正常推进阶段
+    //开局:先买维度1(1点)、第一次重置后再买维度2(10点),其余维度留到正常推进阶段
     //a27支线:到手前完全不买层级1的维度(层级1能量恒为0)
     layer1BuyLimit: () => {
       if (opts.deliberateA27 && !hasAchievement('a27')) return 0
-      return phase == 'layer1Open' ? layer1Resets : Infinity
+      return phase == 'layer1Open' ? layer1Resets + 1 : Infinity
     },
-    //开局按"买1个"来(等于人工点击:先维度1、再维度2);asc+买最大会把预算全砸在维度1上
-    buyAmount: () => (phase == 'layer1Open' ? 'one' : opts.buyAmount),
+    //开局按"买1个"来(等于人工点击:先维度1、再维度2);之后用fill:先把每个维度买出1个再接"买最大"
+    buyAmount: () => (phase == 'layer1Open' ? 'one' : 'fill'),
     spamLayer1: () => hunting(),
     onUnlock(pos, gain) {
       if (compareLayer(pos, [1]) != 0) return
-      layer1Resets = 1
+      //解锁层级1本身不计入"前两次重置"(人工是先花2分钟解锁,再攒11点做前两次重置)
+      layer1Resets = 0
       phase = 'layer1Open'
-      noteLayer1('解锁层级1(第1次重置)', gain)
+      noteLayer1('解锁层级1', gain)
       huntUntil = now.add(opts.a24Window)
     },
     onReset(layer, gain) {
