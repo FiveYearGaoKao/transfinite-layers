@@ -589,7 +589,7 @@ const CHALLENGES: ChallengeInput[] = [
     name: '挑战组合A',
     description: '挑战期间，C1和C2的惩罚始终生效（加速器与加倍器失效、重置后点数获取减半）',
     layer: 'infinity',
-    goalShape: { a: 150, b: 50 },
+    goalShape: { a: 100, b: 50 },
     rewardEffects: [
       {
         target: 'infinityGain',
@@ -608,7 +608,7 @@ const CHALLENGES: ChallengeInput[] = [
     name: '挑战组合B',
     description: '挑战期间，C3和C4的惩罚始终生效（能量效果变为对数、购买使价格视为多买1次）',
     layer: 'infinity',
-    goalShape: { a: 80, b: 120 },
+    goalShape: { a: 80, b: 160 },
     rewardEffects: [
       {
         target: 'b13:amount',
@@ -626,7 +626,7 @@ const CHALLENGES: ChallengeInput[] = [
     name: '维度折叠',
     description: '挑战期间，每个层级只有维度1和维度2能生产资源',
     layer: 'infinity',
-    goalShape: { a: 300, b: 200 },
+    goalShape: { a: 200, b: 200 },
     rewardEffects: [
       {
         target: 'dimensionExponent',
@@ -642,7 +642,7 @@ const CHALLENGES: ChallengeInput[] = [
   {
     id: 'ic4',
     name: '强软上限',
-    description: '挑战期间，价格软上限和维度生产软上限的阈值固定为1，且强度为原来的平方',
+    description: '挑战期间，价格软上限和维度生产软上限的阈值固定为1，且强度为原来的1.5次方',
     layer: 'infinity',
     goalShape: { a: 150, b: 75 },
     effects: [
@@ -663,19 +663,19 @@ const CHALLENGES: ChallengeInput[] = [
         text: '维度生产软上限阈值固定为{value}',
       },
       {
-        //强度为原来的平方:价格软上限^2→^4、维度生产软上限^0.8→^(0.8²)
+        //强度为原来的平方:价格软上限^2→^2.828、维度生产软上限^0.8→^(0.8^1.5)
         //两者参数独立,故各注册一条(数值相同的两条效果,统计页会分别显示)
         target: 'priceCap:power',
         type: 'exp',
         static: true,
-        value: () => new Decimal(2),
+        value: () => new Decimal(1.5),
         text: '软上限强度 ^{value}',
       },
       {
         target: 'dimCap:power',
         type: 'exp',
         static: true,
-        value: () => new Decimal(2),
+        value: () => new Decimal(1.5),
         text: '软上限强度 ^{value}',
       },
     ],
@@ -696,14 +696,14 @@ const CHALLENGES: ChallengeInput[] = [
     name: '时间囚笼',
     description: '挑战期间，全局速度x0.001，每达到1个新层级（高度），该效果将平方',
     layer: 'infinity',
-    goalShape: { a: 1000, b: 1000 },
+    goalShape: { a: 1000, b: 250 },
     rewardEffects: [
       {
         target: 'iu33:base',
         type: 'add',
         //数值待测试
         static: true,
-        value: () => new Decimal(0.1).mul(challengeCompletions('ic5').sqrt()),
+        value: () => new Decimal(0.2).mul(challengeCompletions('ic5').sqrt()),
         text: '无限维度效果指数 +{value}',
       },
     ],

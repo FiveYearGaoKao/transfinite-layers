@@ -240,8 +240,8 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     description: '解锁层级页"购买模式"开关(买1个/买最大)和"全部最大"按钮(快捷键M)',
     maxAmount: new Decimal(1),
     cost: constantCurve(50),
-    require: [['auto-batch', new Decimal(5)]],
-    canBuy: () => true,
+    require: [['auto-batch', new Decimal(1)]],
+    canBuy: () => hasAchievement('a51'),
   },
   {
     id: 'auto-upgrade',
@@ -278,7 +278,25 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     maxAmount: new Decimal(1),
     cost: constantCurve(100),
     require: [['auto-upgrade', new Decimal(1)]],
-    canBuy: () => true,
+    canBuy: () => hasAchievement('a51'),
+  },
+  {
+    id: 'boost-infinity',
+    name: '无限点数加成',
+    category: 'bonus',
+    description: '无限点数获取+20%每级,效果叠加',
+    maxAmount: new Decimal(5),
+    //5+5n(线性增长:只有线性/几何族的解析和才能把"买最大"算准)
+    cost: linear({ a: 50, b: 50, label: '无限点数加成价格' }),
+    require: [],
+    canBuy: () => hasAchievement('a51'),
+    effect: {
+      target: 'infinityGain',
+      type: 'mul',
+      static: true,
+      value: () => new Decimal(0.2).mul(knowledgeAmount('boost-infinity')).add(1),
+      text: '无限点数获取 x{value}',
+    },
   },
 ]
 

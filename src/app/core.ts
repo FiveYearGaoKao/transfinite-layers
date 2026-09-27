@@ -76,6 +76,7 @@ export function gameLoop(dt: Decimal) {
 /**游戏暂停和恢复 */
 export function pause() {
   player.paused = !player.paused
+  addLog('info', player.paused ? '游戏已暂停' : '游戏已恢复')
 }
 /**
  * 把加速与时间扭曲作用到本帧的dt上,返回真正喂给gameLoop的dt

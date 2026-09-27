@@ -3,7 +3,6 @@
 //纯解锁型里程碑不填effect(如批量完成挑战/自动无限重置);数值型里程碑经effects管道注册,卡片数值自动派生
 import Decimal, { type DecimalSource } from 'break_eternity.js'
 import { player } from '@/data/player'
-import { INFINITY_PASSIVE_RATE } from '@/data/constants'
 import { format } from '@/tools/format'
 import { effectText, registerEffect, type EffectDef, type RegisteredEffect } from './effects'
 
@@ -21,8 +20,6 @@ export interface InfinityMilestoneDef {
   effect?: EffectDef
   /**效果数值的文字(卡片第三行;缺省从effect自动生成,无effect时显示"已解锁/未解锁") */
   effectText?(): string
-  /**解锁时追加写进日志的引导(如"去自动化页看看";缺省只写里程碑名) */
-  unlockHint?: string
 }
 
 /**所有已定义的无限里程碑(按解锁阈值升序) */
@@ -31,7 +28,7 @@ export const INFINITY_MILESTONES: InfinityMilestoneDef[] = [
     id: 'im1',
     resets: 1,
     name: '1 次无限重置',
-    description: '基于无限重置次数提升所有维度乘数',
+    description: '根据无限重置次数提升所有维度乘数',
     effect: {
       target: 'dimensionMult',
       type: 'mul',
@@ -57,7 +54,7 @@ export const INFINITY_MILESTONES: InfinityMilestoneDef[] = [
     id: 'im5',
     resets: 5,
     name: '5 次无限重置',
-    description: '基于无限重置次数加成无限点数获取',
+    description: '根据无限重置次数加成无限点数获取',
     effect: {
       target: 'infinityGain',
       type: 'mul',
@@ -83,20 +80,33 @@ export const INFINITY_MILESTONES: InfinityMilestoneDef[] = [
     resets: 10,
     name: '10 次无限重置',
     description: '解锁自动解锁新层级(默认开启,配置在自动化页的"元层自动化"子标签)',
-    unlockHint: '自动解锁新层级已默认开启,可在自动化页→元层自动化查看或调整触发条件',
   },
   {
     id: 'im15',
     resets: 15,
     name: '15 次无限重置',
     description: '解锁自动无限重置(配置在自动化页的"元层自动化"子标签)',
-    unlockHint: '自动无限重置已解锁,可在自动化页→元层自动化配置触发条件',
+  },
+  {
+    id: 'im50',
+    resets: 50,
+    name: '50 次无限重置',
+    description: '根据无限重置次数提升"无限维度"的效果增长速度',
+    effect: {
+      target: 'iu33:speed',
+      type: 'mul',
+      static: true,
+      value() {
+        return player.infinityResets.sub(40).div(10).max(1)
+      },
+      text: '无限维度增长速度 x{value}',
+    },
   },
   {
     id: 'im100',
     resets: 100,
     name: '100 次无限重置',
-    description: `每秒被动获得无限点数,效果为最佳无限点数/秒的${INFINITY_PASSIVE_RATE * 100}%`,
+    description: `每秒被动获得X*min(1,10X/当前IP)无限点数(X为最佳无限点数/秒)`,
     effectText() {
       return `每秒 +${format(infinityPassiveRate())} 无限点数`
     },
@@ -124,9 +134,10 @@ export function hasInfinityMilestone(id: string): boolean {
   return def ? isInfinityMilestoneUnlocked(def) : false
 }
 
-/**被动无限点数速率(每秒):最佳无限点数/秒的INFINITY_PASSIVE_RATE倍(无限里程碑im100) */
+/**被动无限点数速率:v_p=v_m*min(10v_m/IP,1)(无限里程碑im100) */
 export function infinityPassiveRate(): Decimal {
-  return player.infinityBestRate.mul(INFINITY_PASSIVE_RATE)
+  const rate = player.infinityBestRate.div(player.infinityPoints.max(1)).mul(10).min(1)
+  return player.infinityBestRate.mul(rate)
 }
 
 //------效果注册------

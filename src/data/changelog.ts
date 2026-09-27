@@ -2,6 +2,13 @@
 //按版本从新到旧排列
 export const CHANGELOG: { version: string; name?: string; notes: string[] }[] = [
   {
+    version: 'v0.1.6',
+    notes: [
+      '削弱了无限升级iu12,iu23的效果,作为平衡加强了iu13',
+      '增加1个新的无限里程碑,调整了"100次无限重置"里程碑的效果(削弱挂机)',
+    ],
+  },
+  {
     version: 'v0.1.5',
     name: '无限挑战',
     notes: [

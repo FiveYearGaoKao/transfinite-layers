@@ -93,8 +93,7 @@ function logNewInfinityMilestones() {
   for (const def of getInfinityMilestones()) {
     if (!player.infinityResets.sub(1).lt(def.resets) || !player.infinityResets.gte(def.resets))
       continue
-    const hint = def.unlockHint ? `:${def.unlockHint}` : ''
-    addLog('info', `解锁无限里程碑:${def.name}${hint}`)
+    addLog('progress', `解锁无限里程碑:${def.name}`)
   }
 }
 
@@ -108,7 +107,7 @@ export function buyInfinityUpgrade(id: string) {
 //------无限里程碑相关操作------
 /**
  * 无限里程碑的每帧维护
- * im100:按"最佳无限点数/秒×INFINITY_PASSIVE_RATE"每秒被动获得无限点数(不经infinityGain管道)
+ * im100:按"最佳无限点数/秒"每秒被动获得无限点数(不经infinityGain管道)
  * 注:im10的自动解锁新层级与im15的自动无限重置都是元层自动化,注册在logic/metaAutomations.ts,不在这里处理
  */
 export function updateInfinityMilestones(dt: Decimal) {

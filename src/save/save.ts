@@ -251,13 +251,9 @@ function load(s: string): number {
     }
     player.metaAutomations = sanitizeMetaAutomations(player.metaAutomations)
     //全局自动化模板:补齐每种配置形状的字段(缺失类型由logic/automations按默认创建)
-    //全局自动化模板:补齐每种配置形状的字段(缺失类型由logic/automations按默认创建)
     if (player.autoGlobal?.cfgs) {
       for (const [id, cfg] of Object.entries(player.autoGlobal.cfgs)) {
-        player.autoGlobal.cfgs[id] = sanitizeAutoConfig(
-          id == 'reset' ? 'reset' : 'buy',
-          cfg,
-        )
+        player.autoGlobal.cfgs[id] = sanitizeAutoConfig(id == 'reset' ? 'reset' : 'buy', cfg)
       }
     }
     //层级结构校验:丢弃非规范键;临时层不存档,清空后由下一次结构阶段按新层级重建

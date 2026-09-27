@@ -420,6 +420,7 @@ const normalAchievements: AchievementDef[] = [
     description: '进行一次无限重置',
     reward: 10,
     isCompleted: () => player.infinityResets.gte(1),
+    effectText: '解锁更多知识升级',
   },
   {
     id: 'a52',
@@ -451,10 +452,11 @@ const normalAchievements: AchievementDef[] = [
   },
   {
     id: 'a56',
-    name: '三倍体',
-    description: '使层级0加倍器的效果底数>=3',
+    name: '更上一层',
+    description: '获得至少1个层级6点数',
     reward: 66,
-    isCompleted: () => slotValue('b12:base').gte(3),
+    trigger: 'reset',
+    isCompleted: (ev) => gotLayerPoints(ev, [6]),
   },
   {
     id: 'a57',
@@ -486,7 +488,7 @@ const normalAchievements: AchievementDef[] = [
   },
   {
     id: 'a62',
-    name: '新的挑战?',
+    name: '新的挑战',
     description: '完成无限挑战1',
     reward: 60,
     isCompleted: () => challengeCompletions('ic1').gte(1),
@@ -495,12 +497,12 @@ const normalAchievements: AchievementDef[] = [
     id: 'a63',
     name: '这不容易',
     description: '完成无限挑战2',
-    reward: 60,
+    reward: 70,
     isCompleted: () => challengeCompletions('ic2').gte(1),
   },
   {
     id: 'a64',
-    name: '可以挂机了',
+    name: '可以挂机了?',
     description: '进行100次无限重置',
     reward: 100,
     isCompleted: () => player.infinityResets.gte(100),
@@ -511,7 +513,7 @@ const normalAchievements: AchievementDef[] = [
     description: '不解锁其它层级进行无限重置',
     reward: 100,
     trigger: 'infinity',
-    //无限重置只保留层级0,故"只解锁过层级0"等价于此时层级表里只有层级0(判定在删层之前)
+    //无限重置删除除层级0外的0阶层级,故"只解锁过层级0"等价于此时层级表里只有层级0(判定在删层之前)
     isCompleted: () => getOrderedLayers('asc').length == 1,
   },
   {
@@ -522,11 +524,39 @@ const normalAchievements: AchievementDef[] = [
     isCompleted: () => player.infinityBestResetTime.lte(0.001),
   },
   {
-    id: 'a68',
+    id: 'a67',
     name: '百炼成钢',
-    description: '完成挑战的总次数不少于100',
+    description: '完成普通挑战的总次数不少于100',
     reward: 100,
     isCompleted: () => totalChallengeCompletions().gte(100),
+  },
+  {
+    id: 'a68',
+    name: '完美升级',
+    description: '买完前4列无限升级',
+    reward: 200,
+    isCompleted: () => {
+      for (let row = 1; row <= 5; row++) {
+        for (let col = 1; col <= 4; col++) {
+          if (!hasInfinityUpgrade(`iu${row}${col}`)) return false
+        }
+      }
+      return true
+    },
+  },
+  {
+    id: 'a72',
+    name: '22222',
+    description: '拥有2.22e2222层级0点数',
+    reward: 222,
+    isCompleted: () => getPoints([0]).gte('2.22e2222'),
+    effect: {
+      target: 'infinityGain',
+      type: 'mul',
+      value: () => new Decimal(2.222),
+      text: '无限点数 x{value}',
+    },
+    effectText: '无限点数获取 x2.222',
   },
 ]
 

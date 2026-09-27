@@ -12,7 +12,6 @@ import {
 } from '@/access'
 import { INFINITY_UNLOCK_POINTS } from '@/data/constants'
 import { isLayer0 } from '@/tools/ordinal'
-import { format } from '@/tools/format'
 import {
   applyTo,
   defineSlot,
@@ -24,7 +23,8 @@ import {
 } from './effects'
 
 /**无限维度(iu33)的效果指数槽位(默认0.5;被iu43/ic5奖励提升) */
-const SLOT_IU33_BASE = defineSlot('iu33:base', () => new Decimal(0.5), 'global')
+defineSlot('iu33:base', () => new Decimal(0.5), 'global')
+const SLOT_IU33_SPEED = defineSlot('iu33:speed', () => new Decimal(1), 'global')
 
 /**无限升级的配置 */
 export interface InfinityUpgradeDef {
@@ -52,39 +52,39 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
   {
     id: 'iu11',
     name: '总量加成',
-    description: '根据无限点数总量提升所有维度乘数',
+    description: '根据累计获得的无限点数提升所有维度乘数',
     cost: 1,
     effect: {
       target: 'dimensionMult',
       type: 'mul',
-      value: () => player.infinityPoints.add(1).ln().add(1).pow(2),
+      value: () => player.totalInfinityPoints.add(1).ln().add(1).pow(2),
       text: '所有维度乘数 x{value}',
     },
   },
   {
     id: 'iu12',
     name: '点数作用强化',
-    description: '本列每购买1个无限升级,点数作用(升级u1)的效果指数+0.5',
+    description: '点数作用(升级u1)的效果指数+1',
     cost: 2,
     effect: {
       target: 'u1:base',
       type: 'add',
       //只随已购无限升级数变化,可进帧内计划
       static: true,
-      value: () => infinityUpgradeCountInColumn(2).mul(0.5),
+      value: () => new Decimal(1),
       text: '点数作用指数 +{value}',
     },
   },
   {
     id: 'iu13',
     name: '能量涌动',
-    description: '每购买1个无限升级,能量指数+0.005',
+    description: '每购买1个无限升级,能量指数+0.006',
     cost: 3,
     effect: {
       target: 'energy:base',
       type: 'add',
       static: true,
-      value: () => new Decimal(0.005).mul(infinityUpgradeCount()),
+      value: () => new Decimal(0.006).mul(infinityUpgradeCount()),
       text: '能量指数 +{value}',
     },
   },
@@ -136,13 +136,13 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
   {
     id: 'iu23',
     name: '加倍器强化',
-    description: '每购买1个无限升级,加倍器底数+0.08',
-    cost: 40,
+    description: '每购买1个无限升级,加倍器底数+0.04',
+    cost: 32,
     effect: {
       target: 'b12:base',
       type: 'add',
       static: true,
-      value: () => new Decimal(0.08).mul(infinityUpgradeCount()),
+      value: () => new Decimal(0.04).mul(infinityUpgradeCount()),
       text: '加倍器底数 +{value}',
     },
   },
@@ -156,12 +156,12 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     id: 'iu25',
     name: '元维度提升',
     description: '解锁元维度提升',
-    cost: 1e308,
+    cost: 1e10,
   },
   {
     id: 'iu31',
     name: '成就点数',
-    description: '普通层级重置之后保留(当前解锁普通成就总量)的点数',
+    description: '普通层级重置之后保留至多(当前解锁普通成就总量)的点数',
     cost: 50,
     effectText() {
       return `保留 ${getUnlockedNormalAchievementCount()} 点数`
@@ -190,14 +190,14 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
       target: 'dimensionMult',
       type: 'mul',
       base: 'iu33:base',
-      value: (_ctx, base) => player.infinityRunTime.add(1).pow(base ?? new Decimal(0.5)),
+      value: (_ctx, base) =>
+        player.infinityRunTime
+          .mul(slotValue(SLOT_IU33_SPEED))
+          .add(1)
+          .pow(base ?? new Decimal(0.5)),
       text: '所有维度乘数 x{value}',
     },
     //效果文本用槽位组合值计算(iu43会提升指数),直接读取实时值
-    effectText() {
-      const base = slotValue(SLOT_IU33_BASE)
-      return `所有维度乘数 x${format(player.infinityRunTime.add(1).pow(base))}`
-    },
   },
   {
     id: 'iu34',
@@ -244,7 +244,7 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
     effect: {
       target: 'iu33:base',
       type: 'add',
-      value: () => player.infinityPoints.add(1).log(getBase()).sqrt().mul(0.1),
+      value: () => player.infinityPoints.add(1).log(getBase()).sqrt().mul(0.2),
       text: '无限维度效果指数 +{value}',
     },
   },

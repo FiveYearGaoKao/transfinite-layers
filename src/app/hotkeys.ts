@@ -13,6 +13,7 @@ import { cycleBoost, infinityResetConfirm, resetLayerConfirm } from '@/app/uiAct
 import { cycleCurrentSubtab, cycleLayer, mainTabsList } from '@/app/navigation'
 import { focusCommandInput } from '@/app/commandFocus'
 import { DIMENSION_COUNT } from '@/data/constants'
+import { pause } from './core'
 
 /**快捷键注册表条目:同一份定义同时用于按键分发与"选项→快捷键"页显示 */
 export interface HotkeyDef {
@@ -102,6 +103,15 @@ export const HOTKEYS: HotkeyDef[] = [
     isPressed: (e) => pressLetter(e, 'm'),
     run: () => {
       if (hasKnowledge('max-buy')) maxBuyAll(player.layerSubtab)
+    },
+  },
+  {
+    id: 'pause-game',
+    keys: 'SPACE',
+    desc: '暂停/恢复游戏',
+    isPressed: (e) => pressLetter(e, ' '),
+    run: () => {
+      if (hasKnowledge('time-pause')) pause()
     },
   },
   {
