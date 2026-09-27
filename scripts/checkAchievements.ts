@@ -104,7 +104,8 @@ freshSave()
 //层级重置成就按"绝对高度"认层,所以逐层构造:重置层级n解锁层级n,同时给"获得至少1个层级n点数"发收益
 //(这些条件只在层级重置瞬间可能成立,不能靠事后造状态)
 const resetNew = newlyUnlocked(() => {
-  for (const n of [1, 2, 3, 4]) {
+  //覆盖重置桶成就引用到的所有高度(现为层级1~4与层级6):改成就条件时同步这份高度清单
+  for (const n of [1, 2, 3, 4, 6]) {
     //先让目标层存在(层级1由解锁层级1的重置产生,故这一轮要先建层级1再发这次重置事件)
     ensureLayer0Order(n)
     checkResetAchievements({ layer: [n], gain: new Decimal('1e300') })

@@ -258,6 +258,12 @@ const activeLayers = computed(() =>
           >
             无限重置:{{ settings.infinityResetConfirm ? '开' : '关' }}
           </button>
+          <button
+            :class="['toggle', settings.metaDimensionConfirm ? 'toggle-on' : 'toggle-off']"
+            @click="toggleSettings('metaDimensionConfirm')"
+          >
+            元维度提升:{{ settings.metaDimensionConfirm ? '开' : '关' }}
+          </button>
         </div>
       </div>
       <div class="section">

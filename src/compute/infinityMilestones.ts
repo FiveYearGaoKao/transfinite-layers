@@ -88,19 +88,10 @@ export const INFINITY_MILESTONES: InfinityMilestoneDef[] = [
     description: '解锁自动无限重置(配置在自动化页的"元层自动化"子标签)',
   },
   {
-    id: 'im50',
-    resets: 50,
-    name: '50 次无限重置',
-    description: '根据无限重置次数提升"无限维度"的效果增长速度',
-    effect: {
-      target: 'iu33:speed',
-      type: 'mul',
-      static: true,
-      value() {
-        return player.infinityResets.sub(40).div(10).max(1)
-      },
-      text: '无限维度增长速度 x{value}',
-    },
+    id: 'im25',
+    resets: 25,
+    name: '25 次无限重置',
+    description: '购买升级u4/u5将同时解锁同一层的自动化',
   },
   {
     id: 'im100',
@@ -109,6 +100,21 @@ export const INFINITY_MILESTONES: InfinityMilestoneDef[] = [
     description: `每秒被动获得X*min(1,10X/当前IP)无限点数(X为最佳无限点数/秒)`,
     effectText() {
       return `每秒 +${format(infinityPassiveRate())} 无限点数`
+    },
+  },
+  {
+    id: 'im200',
+    resets: 200,
+    name: '200 次无限重置',
+    description: '根据无限重置次数提升"无限维度"的效果增长速度',
+    effect: {
+      target: 'iu33:speed',
+      type: 'mul',
+      static: true,
+      value() {
+        return player.infinityResets.sub(100).div(100).max(1).pow(2).min(1e6)
+      },
+      text: '无限维度增长速度 x{value}',
     },
   },
 ]

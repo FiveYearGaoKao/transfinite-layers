@@ -17,6 +17,7 @@ import { canReset, resetGain } from '@/compute/prestige'
 import { hasUpgrade } from '@/compute/upgrades'
 import { hasInfinityUpgrade } from '@/compute/infinity'
 import { hasLayerContent } from '@/compute/layerContent'
+import { dimensionCount } from '@/compute/metaDimension'
 import { addLog } from '@/data/log'
 import { checkResetAchievements } from './achievements'
 import { unlockNextLayer, wipeLayerScope } from './layerStructure'
@@ -73,7 +74,8 @@ function resetDataInner(layer: LayerId, opts: ResetOptions) {
     L.buyables = {}
     //未保留下层升级时,仅保留被无限升级保护的升级(u4~u8),其余全部清空
     if (!keepUpgrades) L.upgrades = L.upgrades.filter((u) => upgradeProtectedByInfinity(u))
-    initializeDimensions(L)
+    //维度数量按当前的元维度提升次数取(不能写死4个,否则元维度提升解锁的维度会被重置吃掉)
+    initializeDimensions(L, dimensionCount())
   }
 }
 

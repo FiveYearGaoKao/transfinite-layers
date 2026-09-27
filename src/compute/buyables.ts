@@ -3,6 +3,7 @@ import Decimal from 'break_eternity.js'
 import type { LayerId } from '@/data/types'
 import { c4BoughtOffset, getLayer, hasAchievement } from '@/access'
 import { hasInfinityUpgrade } from './infinity'
+import { dimensionCount } from './metaDimension'
 import { initializeDimensions } from '@/data/types'
 import { SOFT_CAP_HEIGHT, SLOT_PRICE_CAP_BASE, SLOT_PRICE_CAP_POWER } from './softCap'
 import { expLinear, floored, powerDoubleExp, powerQuadratic, type Curve } from './curves'
@@ -129,7 +130,8 @@ export const BUYABLES: BuyableDef[] = [
       const L = getLayer(layer)
       if (!L) return
       L.points = new Decimal(1)
-      initializeDimensions(L)
+      //维度重建也要保持当前维度数量(元维度提升解锁的维度不能在这里丢掉)
+      initializeDimensions(L, dimensionCount())
       L.buyables[11] = new Decimal(0)
       L.buyables[12] = new Decimal(0)
     },

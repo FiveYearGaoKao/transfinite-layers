@@ -1,5 +1,6 @@
 //------类型声明------
 import Decimal, { type DecimalSource } from 'break_eternity.js'
+import { DIMENSION_COUNT } from './constants'
 
 export interface Layer {
   active: boolean
@@ -30,16 +31,25 @@ export type LayerList = Record<string, Layer>
 export type LayerId = number[]
 /**层级的引用:层级坐标或层级对象;需要接受undefined的调用处显式写"LayerRef | undefined" */
 export type LayerRef = LayerId | Layer
-/**初始化一个层级的维度*/
-export function initializeDimensions(layer: Layer) {
+/**
+ * 初始化一个层级的维度
+ * @param layer 目标层级
+ * @param count 维度数量(缺省初始4个;当前维度数由compute/metaDimension的dimensionCount()给出,元维度提升会提高它)
+ */
+export function initializeDimensions(layer: Layer, count: number = DIMENSION_COUNT) {
   layer.dimensions = []
-  for (let i = 0; i < 4; ++i) layer.dimensions.push([new Decimal(0), new Decimal(0)])
+  for (let i = 0; i < count; ++i) layer.dimensions.push([new Decimal(0), new Decimal(0)])
 }
 /**
  * 创建一个空白层级
  * @param isLayer0 层级0初始有1点数，其他层级为0
+ * @param dimCount 维度数量(缺省初始4个;创建层级/临时层时必须传当前维度数,见compute/metaDimension)
  */
-export function initializeLayer(level: DecimalSource, isLayer0: boolean = false): Layer {
+export function initializeLayer(
+  level: DecimalSource,
+  isLayer0: boolean = false,
+  dimCount: number = DIMENSION_COUNT,
+): Layer {
   const layer: Layer = {
     active: true,
     level: new Decimal(level),
@@ -53,7 +63,7 @@ export function initializeLayer(level: DecimalSource, isLayer0: boolean = false)
     buyables: {},
     dimensions: [],
   }
-  initializeDimensions(layer)
+  initializeDimensions(layer, dimCount)
   return layer
 }
 
@@ -177,7 +187,8 @@ export function sanitizeAutoBuy(cfg: unknown, priority: number = 1): AutoBuyConf
   //perItem:只保留布尔值(损坏档里的非布尔项按未勾选处理)
   const perItem: Record<number, boolean> = {}
   if (c.perItem != null && typeof c.perItem == 'object') {
-    for (const [k, v] of Object.entries(c.perItem)) if (typeof v == 'boolean') perItem[Number(k)] = v
+    for (const [k, v] of Object.entries(c.perItem))
+      if (typeof v == 'boolean') perItem[Number(k)] = v
   }
   return {
     enabled: typeof c.enabled == 'boolean' ? c.enabled : base.enabled,

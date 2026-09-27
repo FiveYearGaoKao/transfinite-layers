@@ -2,7 +2,7 @@
 import Decimal from 'break_eternity.js'
 import { ref } from 'vue'
 import { compressToBase64, decompressFromBase64 } from 'lz-string'
-import { player, type Player, initializeSave } from '@/data/player'
+import { player, type Player, initializeSave, INFINITY_SUBTAB_IDS } from '@/data/player'
 import { sanitizeAutoConfig } from '@/data/types'
 import { sanitizeMetaAutomations } from '@/logic/metaAutomations'
 import { gameVersion, EARLIEST_SAVE_TIME, SAVE_SLOT_COUNT, storagePrefix } from '@/data/constants'
@@ -245,7 +245,7 @@ function load(s: string): number {
     //结构性校验(游戏未发布,无旧档迁移;缺失字段由initializeSave默认值覆盖)
     if (!(player.seed >= 0)) player.seed = 0
     if (!['warp', 'store', 'ask'].includes(player.offlineMode)) player.offlineMode = 'warp'
-    if (!['upgrades', 'milestones'].includes(player.infinityTab)) player.infinityTab = 'upgrades'
+    if (!INFINITY_SUBTAB_IDS.includes(player.infinityTab)) player.infinityTab = 'upgrades'
     if (!(player.infinityBestRate?.gte(0) && player.infinityBestRate.isFinite())) {
       player.infinityBestRate = new Decimal(0)
     }

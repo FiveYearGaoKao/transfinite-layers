@@ -17,6 +17,7 @@ import {
   prevLayer,
 } from '@/access'
 import { hasLayerContent } from '@/compute/layerContent'
+import { dimensionCount } from '@/compute/metaDimension'
 import { addLog } from '@/data/log'
 import {
   compareLayer,
@@ -59,7 +60,7 @@ function syncTempLayer(pos: LayerId, n: number = 0) {
   const newLevel = L.level.add(1)
   const tempL = getLayer(pos1)
   if (!tempL) {
-    temp.tempLayers[layerKey(pos1)] = initializeLayer(newLevel)
+    temp.tempLayers[layerKey(pos1)] = initializeLayer(newLevel, false, dimensionCount())
   } else {
     tempL.level = newLevel
   }
@@ -98,7 +99,7 @@ export function wipeLayersWhere(pred: (pos: LayerId, L: Layer) => boolean): numb
 
 /**把层级0重建为全新初始状态(元层重置用) */
 export function recreateLayer0() {
-  player.layers['0'] = initializeLayer(0, true)
+  player.layers['0'] = initializeLayer(0, true, dimensionCount())
 }
 
 //------解锁新层级------
@@ -153,7 +154,7 @@ export function unlockNextLayer(tempPos: LayerId): LayerId {
     moveAutomation(tempKey, layerKey(realPos))
   }
   //重建临时层(预览下一层):其高度为新顶层高度+1,无需等下一次结构阶段校正
-  temp.tempLayers[tempKey] = initializeLayer(L.level.add(1))
+  temp.tempLayers[tempKey] = initializeLayer(L.level.add(1), false, dimensionCount())
   invalidateLayerOrder()
   return realPos
 }

@@ -6,6 +6,7 @@ import { INFINITY_UNLOCK_POINTS } from '@/data/constants'
 import {
   canInfinityReset,
   getInfinityUpgrade,
+  hasInfinityUpgrade,
   infinityGain,
   type InfinityUpgradeDef,
 } from '@/compute/infinity'
@@ -20,22 +21,32 @@ import { registerSubtabCycler, unregisterSubtabCycler } from '@/app/navigation'
 import { infinityResetConfirm } from '@/app/uiActions'
 import InfinityUpgradeItem from './infinityUpgradeItem.vue'
 import InfinityMilestones from './infinityMilestones.vue'
+import MetaPrestige from './metaPrestige.vue'
 
-/**无限页的子标签 */
-const SUBTABS: { id: InfinitySubtab; name: string }[] = [
-  { id: 'upgrades', name: '无限升级' },
-  { id: 'milestones', name: '无限里程碑' },
+/**无限页的全部子标签(含解锁条件) */
+const SUBTABS: { id: InfinitySubtab; name: string; isUnlocked(): boolean }[] = [
+  { id: 'upgrades', name: '无限升级', isUnlocked: () => true },
+  { id: 'milestones', name: '无限里程碑', isUnlocked: () => true },
+  //元声望:购买无限升级iu25(元维度提升)后解锁,内容当前只有元维度提升卡片
+  { id: 'metaPrestige', name: '元声望', isUnlocked: () => hasInfinityUpgrade('iu25') },
 ]
-/**当前子标签(非法值回落"无限升级") */
+/**可见的子标签:未解锁的不显示,也不参与左右键循环 */
+const visibleSubtabs = computed(() => SUBTABS.filter((t) => t.isUnlocked()))
+/**当前子标签(存档值为未解锁的子标签时回落到"无限升级") */
 const subtab = ref<InfinitySubtab>(
   SUBTABS.some((t) => t.id == player.infinityTab) ? player.infinityTab : 'upgrades',
 )
+/**实际显示的子标签:选中项不可见(如买iu25之前存档停在元声望)时回落"无限升级" */
+const activeSubtab = computed<InfinitySubtab>(() =>
+  visibleSubtabs.value.some((t) => t.id == subtab.value) ? subtab.value : 'upgrades',
+)
 watch(subtab, (v) => (player.infinityTab = v))
-/**无限页子标签的循环切换(快捷键左右键用) */
+/**无限页子标签的循环切换(快捷键左右键用),只在可见子标签之间循环 */
 onMounted(() =>
   registerSubtabCycler('infinity', (dir) => {
-    const idx = SUBTABS.findIndex((t) => t.id == subtab.value)
-    subtab.value = SUBTABS[(idx + dir + SUBTABS.length) % SUBTABS.length]?.id ?? 'upgrades'
+    const list = visibleSubtabs.value
+    const idx = list.findIndex((t) => t.id == activeSubtab.value)
+    subtab.value = list[(idx + dir + list.length) % list.length]?.id ?? 'upgrades'
   }),
 )
 onUnmounted(() => unregisterSubtabCycler('infinity'))
@@ -72,9 +83,9 @@ const resetButtonText = computed(() =>
   <div id="infinity">
     <div class="subtabRow">
       <button
-        v-for="t in SUBTABS"
+        v-for="t in visibleSubtabs"
         :key="t.id"
-        :class="['subTab', { selected: subtab == t.id }]"
+        :class="['subTab', { selected: activeSubtab == t.id }]"
         @click="subtab = t.id"
       >
         {{ t.name }}
@@ -104,14 +115,15 @@ const resetButtonText = computed(() =>
       自动无限重置已开启,但尚未设置触发条件(见自动化页→元层自动化)
     </span>
 
-    <div v-if="subtab == 'upgrades'" id="infinityUpgrades">
+    <div v-if="activeSubtab == 'upgrades'" id="infinityUpgrades">
       <div v-for="(row, r) in iuGrid" :key="r" class="iuRow">
         <InfinityUpgradeItem v-for="(def, c) in row" :key="c" :def="def" />
       </div>
       <span class="text faint"> 同一列必须从上到下购买。部分升级的效果与价格仍在测试调整中。 </span>
     </div>
 
-    <InfinityMilestones v-else />
+    <InfinityMilestones v-else-if="activeSubtab == 'milestones'" />
+    <MetaPrestige v-else />
   </div>
 </template>
 <style scoped>

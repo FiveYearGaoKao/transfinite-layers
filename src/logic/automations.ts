@@ -211,12 +211,14 @@ export function resetAutomationsForInfinityReset() {
 /**某层维度自动购买是否解锁(0阶来源层nextLayer(pos,0)购买u4;无限里程碑im6让层级0不再依赖它) */
 export function dimsAutoUnlocked(pos: LayerId): boolean {
   if (isLayer0(pos) && hasInfinityMilestone('im6')) return true
+  if (hasInfinityMilestone('im25') && hasUpgrade(pos, 4)) return true
   const source = nextLayer(pos, 0)
   return getLayer(source) != undefined && hasUpgrade(source, 4)
 }
 /**某层可购买自动购买是否解锁(0阶来源层nextLayer(pos,0)购买u5;无限里程碑im6让层级0不再依赖它) */
 export function buyablesAutoUnlocked(pos: LayerId): boolean {
   if (isLayer0(pos) && hasInfinityMilestone('im6')) return true
+  if (hasInfinityMilestone('im25') && hasUpgrade(pos, 5)) return true
   const source = nextLayer(pos, 0)
   return getLayer(source) != undefined && hasUpgrade(source, 5)
 }

@@ -17,8 +17,14 @@ export type mainTabs =
   | 'tree'
   | 'ordinal'
 
+/**
+ * 无限页的子标签id(新增子标签时在此追加)
+ * 兼作读档兜底的白名单:`player.infinityTab` 只允许这些值(元声望需购买iu25才显示,见infinityLayer.vue)
+ */
+export const INFINITY_SUBTAB_IDS = ['upgrades', 'milestones', 'metaPrestige'] as const
+
 /**无限页的子标签 */
-export type InfinitySubtab = 'upgrades' | 'milestones'
+export type InfinitySubtab = (typeof INFINITY_SUBTAB_IDS)[number]
 
 export interface Player {
   version: string
@@ -80,6 +86,8 @@ export interface Player {
   totalInfinityPoints: Decimal
   /**历史最佳"无限点数/秒"(单次无限重置收益÷本次无限时长,供无限里程碑im100使用) */
   infinityBestRate: Decimal
+  /**已完成的元维度提升次数(决定每层维度数与维度指数加成;只增不减,不被任何重置清除) */
+  metaDimensionBoosts: Decimal
   /**元层自动化配置(键为元层自动化id,如'infinity';全局唯一实例,各机制自己判定解锁) */
   metaAutomations: Record<string, AutoConfig>
   /**无限页当前子标签(无限升级/无限里程碑) */
@@ -142,6 +150,7 @@ export function initializeSave(): Player {
     infinityBestResetTime: Decimal.dInf,
     totalInfinityPoints: new Decimal(0),
     infinityBestRate: new Decimal(0),
+    metaDimensionBoosts: new Decimal(0),
     metaAutomations: {},
     infinityTab: 'upgrades',
     challengeTab: 'normal',

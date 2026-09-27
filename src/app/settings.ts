@@ -41,6 +41,8 @@ export interface Settings {
   resetConfirm: boolean
   /**无限重置前是否二次确认 */
   infinityResetConfirm: boolean
+  /**元维度提升前是否二次确认 */
+  metaDimensionConfirm: boolean
   /**是否启用快捷键 */
   hotkeys: boolean
   /**层级页手动购买是否"买最大"(需知识升级max-buy,"购买模式"开关) */
@@ -63,6 +65,7 @@ export function defaultSettings(): Settings {
     knowledgeCategoryVisible: {},
     resetConfirm: true,
     infinityResetConfirm: true,
+    metaDimensionConfirm: true,
     hotkeys: true,
     buyMax: false,
     resourceBarItems: {

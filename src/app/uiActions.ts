@@ -5,8 +5,16 @@ import { getLayerName, isChallengeActive } from '@/access'
 import { formatWhole } from '@/tools/format'
 import { resetGain } from '@/compute/prestige'
 import { canInfinityReset, infinityGain } from '@/compute/infinity'
+import {
+  canMetaDimensionBoost,
+  dimensionCount,
+  metaDimensionBoostCount,
+  META_DIMENSION_EXPONENT_PER_BOOST,
+  META_DIMENSION_MAX_COUNT,
+} from '@/compute/metaDimension'
 import { doReset, resetRunWithoutGain } from '@/logic/reset'
 import { doInfinityReset } from '@/logic/infinity'
+import { doMetaDimensionBoost } from '@/logic/metaDimension'
 import { openConfirm } from '@/app/dialog'
 import { settings } from '@/app/settings'
 import { getBoostPresets } from '@/compute/knowledge'
@@ -56,6 +64,31 @@ export async function infinityResetConfirm() {
       cancelText: '取消',
     }))
   if (confirmed) doInfinityReset()
+}
+
+/**
+ * 元维度提升(带设置里的二次确认)
+ * 提升会强制执行一次无限重置(不获得无限点数)并删除除层级0外的所有层级,故确认框把代价写清楚
+ */
+export async function metaDimensionBoostConfirm() {
+  if (!canMetaDimensionBoost()) return
+  //确认框文字描述的是"本次提升"(当前次数+1)的效果,与卡片上的下一级文案同源
+  const next = metaDimensionBoostCount().add(1)
+  const unlock =
+    dimensionCount() < META_DIMENSION_MAX_COUNT ? `为所有层级解锁维度${dimensionCount() + 1},` : ''
+  const exponentDims = Math.min(next.toNumber(), META_DIMENSION_MAX_COUNT)
+  const confirmed =
+    !settings.metaDimensionConfirm ||
+    (await openConfirm({
+      title: '元维度提升确认',
+      text:
+        `将强制执行一次无限重置(不获得无限点数):删除除层级0外的所有层级、` +
+        `清空普通挑战记录与各层级的自动化配置。\n` +
+        `${unlock}并使维度1~${exponentDims}的指数+${META_DIMENSION_EXPONENT_PER_BOOST}。\n此操作无法撤销。`,
+      confirmText: '确认提升',
+      cancelText: '取消',
+    }))
+  if (confirmed) doMetaDimensionBoost()
 }
 
 /**循环切换加速倍率(在已解锁档位间轮转) */

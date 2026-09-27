@@ -608,7 +608,7 @@ const CHALLENGES: ChallengeInput[] = [
     name: '挑战组合B',
     description: '挑战期间，C3和C4的惩罚始终生效（能量效果变为对数、购买使价格视为多买1次）',
     layer: 'infinity',
-    goalShape: { a: 80, b: 160 },
+    goalShape: { a: 80, b: 200 },
     rewardEffects: [
       {
         target: 'b13:amount',
@@ -696,7 +696,7 @@ const CHALLENGES: ChallengeInput[] = [
     name: '时间囚笼',
     description: '挑战期间，全局速度x0.001，每达到1个新层级（高度），该效果将平方',
     layer: 'infinity',
-    goalShape: { a: 1000, b: 250 },
+    goalShape: { a: 1000, b: 500 },
     rewardEffects: [
       {
         target: 'iu33:base',

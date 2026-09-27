@@ -14,6 +14,7 @@ import '@/compute/upgrades'
 import '@/compute/crossLayer'
 import '@/compute/infinity'
 import '@/compute/infinityMilestones'
+import '@/compute/metaDimension'
 import '@/logic/achievements'
 import '@/logic/challenges'
 
