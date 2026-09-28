@@ -17,7 +17,7 @@ import {
   getOrderedTempLayers,
   getPoints,
   hasAchievement,
-  totalChallengeCompletions,
+  normalChallengeCompletions,
 } from '@/access'
 import { format, formatTime, formatWhole } from '@/tools/format'
 import { compareLayer, getLayerOrder, isLayer0 } from '@/tools/ordinal'
@@ -749,7 +749,7 @@ export function snapshot(
     infinityUpgrades: player.infinityUpgrades.length,
     knowledge: player.knowledge,
     knowledgeLevels: levels,
-    challengeCompletions: totalChallengeCompletions(),
+    challengeCompletions: normalChallengeCompletions(),
     achievements: player.achievements.length,
     structure,
     phase,
@@ -836,7 +836,7 @@ export function runSim(opts: SimOptions): SimResult {
   let nextRow = opts.every
   let layerCount = rows[0]!.layerCount
   let resets = player.infinityResets.toString()
-  let prevCompletions = totalChallengeCompletions().toString()
+  let prevCompletions = normalChallengeCompletions().toString()
   let activeChallenges = player.activeChallenges.join(',')
   let achievements = new Set(player.achievements)
   while (elapsed().lt(seconds)) {
@@ -864,7 +864,7 @@ export function runSim(opts: SimOptions): SimResult {
       resets = nowResets
       opts.onEvent?.(`[无限] t=${t}s 第${player.infinityResets}次 IP=${player.infinityPoints}`)
     }
-    const nowCompletions = totalChallengeCompletions().toString()
+    const nowCompletions = normalChallengeCompletions().toString()
     if (nowCompletions != prevCompletions) {
       prevCompletions = nowCompletions
       opts.onEvent?.(`[挑战] t=${t}s 总完成次数=${nowCompletions}`)

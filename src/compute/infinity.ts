@@ -278,7 +278,7 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
   {
     id: 'iu52',
     name: '软上限削弱',
-    description: '根据完成普通挑战的总数削弱价格软上限的强度',
+    description: '根据完成普通和无限挑战的总数削弱价格软上限的强度',
     cost: 1e5,
     effect: {
       target: 'priceCap:power',

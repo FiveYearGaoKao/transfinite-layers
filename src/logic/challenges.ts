@@ -642,9 +642,9 @@ const CHALLENGES: ChallengeInput[] = [
   {
     id: 'ic4',
     name: '强软上限',
-    description: '挑战期间，价格软上限和维度生产软上限的阈值固定为1，且强度为原来的1.5次方',
+    description: '挑战期间，价格软上限和维度生产软上限的阈值固定为1',
     layer: 'infinity',
-    goalShape: { a: 150, b: 75 },
+    goalShape: { a: 75, b: 75 },
     effects: [
       {
         //价格软上限阈值固定为1
@@ -662,22 +662,6 @@ const CHALLENGES: ChallengeInput[] = [
         value: () => new Decimal(1),
         text: '维度生产软上限阈值固定为{value}',
       },
-      {
-        //强度为原来的平方:价格软上限^2→^2.828、维度生产软上限^0.8→^(0.8^1.5)
-        //两者参数独立,故各注册一条(数值相同的两条效果,统计页会分别显示)
-        target: 'priceCap:power',
-        type: 'exp',
-        static: true,
-        value: () => new Decimal(1.5),
-        text: '软上限强度 ^{value}',
-      },
-      {
-        target: 'dimCap:power',
-        type: 'exp',
-        static: true,
-        value: () => new Decimal(1.5),
-        text: '软上限强度 ^{value}',
-      },
     ],
     rewardEffects: [
       {
@@ -685,7 +669,7 @@ const CHALLENGES: ChallengeInput[] = [
         type: 'add',
         //数值待测试
         static: true,
-        value: () => new Decimal(0.05).mul(challengeCompletions('ic4').add(1).ln()),
+        value: () => new Decimal(0.04).mul(challengeCompletions('ic4').add(1).log(2)),
         text: '能量指数 +{value}',
       },
     ],

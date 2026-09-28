@@ -74,15 +74,24 @@ export function challengeCompletions(id: string): Decimal {
 }
 
 /**
- * 挑战的总完成次数(只计普通挑战;无限挑战的完成次数不计入iu52的软上限削弱与相关成就)
+ * 普通挑战的总完成次数
  * 放在access而非logic:compute/infinity的iu52需要它,而compute不能引用logic(会形成
  * compute/infinity→logic/challenges→…→compute/infinity的循环,并在模块求值期触发TDZ错误)
  * 判据是id约定(普通挑战'c'+编号,无限挑战'ic'+编号),无需挑战注册表
  */
-export function totalChallengeCompletions(): Decimal {
+export function normalChallengeCompletions(): Decimal {
   let total = new Decimal(0)
   for (const id in player.challenges) {
     if (isInfinityChallenge(id)) continue
+    total = total.add(challengeCompletions(id))
+  }
+  return total
+}
+
+/**所有挑战的完成总数(包括无限挑战) */
+export function totalChallengeCompletions(): Decimal {
+  let total = new Decimal(0)
+  for (const id in player.challenges) {
     total = total.add(challengeCompletions(id))
   }
   return total

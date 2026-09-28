@@ -3,10 +3,10 @@ import { computed } from 'vue'
 import { format } from '@/tools/format'
 import {
   getActiveLayers,
-  getEnergy,
   getHighestActiveLayer,
   getLayerName,
   getPoints,
+  hasAchievement,
 } from '@/access'
 import { isLayer0 } from '@/tools/ordinal'
 import { player } from '@/data/player'
@@ -51,7 +51,7 @@ export const RESOURCE_ITEMS: ResourceDef[] = [
     id: 'infinity',
     label: '无限点数',
     resolve() {
-      return player.infinityPoints.gt(0)
+      return hasAchievement('a51')
         ? [{ label: '无限点数', value: format(player.infinityPoints) }]
         : []
     },
@@ -79,7 +79,7 @@ export const RESOURCE_ITEMS: ResourceDef[] = [
         if (isLayer0(pos)) continue
         const name = getLayerName(pos)
         rows.push({ label: `${name} 点数`, value: format(L.points) })
-        if (getEnergy(pos).gt(0)) rows.push({ label: `${name} 能量`, value: format(L.energy) })
+        rows.push({ label: `${name} 能量`, value: format(L.energy) })
       }
       return rows
     },

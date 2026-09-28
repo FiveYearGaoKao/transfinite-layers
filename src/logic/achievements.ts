@@ -14,7 +14,7 @@ import {
   hasAnyUpgrade,
   isChallengeActive,
   registerNormalAchievement,
-  totalChallengeCompletions,
+  normalChallengeCompletions,
 } from '@/access'
 import { buyableAmount } from '@/compute/buyables'
 import { dimensionCost, dimensionMultiplier } from '@/compute/dimensions'
@@ -291,9 +291,9 @@ const normalAchievements: AchievementDef[] = [
   {
     id: 'a37',
     name: '挑战者',
-    description: '完成挑战的总次数不少于10',
+    description: '完成普通挑战的总次数不少于10',
     reward: 20,
-    isCompleted: () => totalChallengeCompletions().gte(10),
+    isCompleted: () => normalChallengeCompletions().gte(10),
   },
   {
     id: 'a38',
@@ -496,14 +496,14 @@ const normalAchievements: AchievementDef[] = [
     id: 'a63',
     name: '可以挂机了?',
     description: '进行100次无限重置',
-    reward: 100,
+    reward: 80,
     isCompleted: () => player.infinityResets.gte(100),
   },
   {
     id: 'a64',
     name: '我需要层级吗',
     description: '不解锁其它层级进行无限重置',
-    reward: 100,
+    reward: 90,
     trigger: 'infinity',
     //无限重置删除除层级0外的0阶层级,故"只解锁过层级0"等价于此时层级表里只有层级0(判定在删层之前)
     isCompleted: () => getOrderedLayers('asc').length == 1,
@@ -528,13 +528,13 @@ const normalAchievements: AchievementDef[] = [
     name: '百炼成钢',
     description: '完成普通挑战的总次数不少于100',
     reward: 100,
-    isCompleted: () => totalChallengeCompletions().gte(100),
+    isCompleted: () => normalChallengeCompletions().gte(100),
   },
   {
     id: 'a68',
     name: '完美升级',
     description: '买完前4列无限升级',
-    reward: 200,
+    reward: 100,
     isCompleted: () => {
       for (let row = 1; row <= 5; row++) {
         for (let col = 1; col <= 4; col++) {
@@ -564,6 +564,42 @@ const normalAchievements: AchievementDef[] = [
     description: '购买层级0维度5',
     reward: 125,
     isCompleted: () => dimensionAmount([0], 4, 1).gte(1),
+  },
+  {
+    id: 'a73',
+    name: '维度之主',
+    description: '进行4次元维度提升',
+    reward: 128,
+    isCompleted: () => player.metaDimensionBoosts.gte(4),
+  },
+  {
+    id: 'a74',
+    name: '千次轮回',
+    description: '进行1000次无限重置',
+    reward: 100,
+    isCompleted: () => player.infinityResets.gte(1000),
+  },
+  {
+    id: 'a75',
+    name: '难上加难',
+    description: '在无限挑战5中完成普通挑战5至少5次',
+    reward: 125,
+    isCompleted: () => isChallengeActive('ic5') && challengeCompletions('c5').gte(5),
+  },
+  {
+    id: 'a76',
+    name: '纯粹的数值',
+    description: '完成无限挑战4',
+    reward: 150,
+    isCompleted: () => challengeCompletions('ic4').gte(1),
+  },
+  {
+    id: 'a77',
+    name: '一步之遥',
+    description: '获得至少1个层级9点数',
+    reward: 144,
+    trigger: 'reset',
+    isCompleted: (ev) => gotLayerPoints(ev, [9]),
   },
 ]
 
