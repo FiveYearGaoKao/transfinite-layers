@@ -16,12 +16,14 @@
     "type-check": "vue-tsc --build",
     "lint": "eslint . --fix",
     "format": "prettier --write src/",
-    "check": "run-s check:pricing check:effects check:save check:achievements check:meta",
+    "check": "run-s check:pricing check:effects check:save check:achievements check:meta check:commands check:worldDepth",
     "check:pricing": "node scripts/run-ts.mjs scripts/checkPricing.ts",
     "check:effects": "node scripts/run-ts.mjs scripts/checkEffects.ts",
     "check:save": "node scripts/run-ts.mjs scripts/checkSave.ts",
     "check:achievements": "node scripts/run-ts.mjs scripts/checkAchievements.ts",
     "check:meta": "node scripts/run-ts.mjs scripts/checkMetaDimension.ts",
+    "check:commands": "node scripts/run-ts.mjs scripts/checkCommands.ts",
+    "check:worldDepth": "node scripts/run-ts.mjs scripts/checkWorldDepth.ts",
     "sim": "node scripts/run-ts.mjs scripts/sim.ts"
   },
   "dependencies": {

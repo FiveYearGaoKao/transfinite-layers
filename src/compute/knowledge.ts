@@ -9,11 +9,13 @@ import {
   hasAchievement,
 } from '@/access'
 import { temp } from '@/data/temp'
+import { OFFLINE_LIMIT_BASE, OFFLINE_LIMIT_PER_LEVEL } from '@/data/constants'
 import { format, formatWhole } from '@/tools/format'
 import { constantCurve, floored, geometric, linear, type Curve } from './curves'
 import type { BuyableItem } from './buying'
 import {
   applyTo,
+  defineSlot,
   effectText,
   registerEffect,
   type EffectDef,
@@ -44,6 +46,8 @@ export interface KnowledgeUpgradeDef {
   /**购买效果的文字说明(缺省从effect自动生成) */
   effectText?(): string
 }
+
+const SOLT_DEPTH_POINTS_BASE = defineSlot('depthPoints:base', () => new Decimal(2), 'global')
 
 /**所有已定义的知识升级 */
 export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
@@ -109,6 +113,20 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     canBuy: () => true,
   },
   {
+    id: 'time-offline-limit',
+    name: '离线延长',
+    category: 'time',
+    description: '提高离线时间上限(每级+1小时)',
+    maxAmount: new Decimal(18),
+    //20+20n
+    cost: linear({ a: 20, b: 20, label: '离线延长价格' }),
+    require: [['time-store', new Decimal(1)]],
+    canBuy: () => true,
+    effectText(): string {
+      return `离线时间上限 ${formatWhole(offlineTimeLimit().div(3600))}小时`
+    },
+  },
+  {
     id: 'bonus-achievement',
     name: '成就之力',
     category: 'bonus',
@@ -156,13 +174,14 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     effect: {
       target: 'pointsGain',
       type: 'mul',
+      base: SOLT_DEPTH_POINTS_BASE,
       //只读层级高度(解锁新层级会清缓存),可进帧内计划
       static: true,
-      value: (ctx) => {
+      value: (ctx, base) => {
         const top = getLayer(getWindowTopLayer(ctx.pos))
         const L = getLayer(ctx.pos)
         if (!top || !L) return new Decimal(1)
-        return new Decimal(2).pow(Decimal.max(0, top.level.sub(L.level)))
+        return Decimal.pow(base || 2, Decimal.max(0, top.level.sub(L.level)))
       },
       text: '点数获取 x{value}',
     },
@@ -203,6 +222,20 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
       static: true,
       value: () => new Decimal(0.9).pow(knowledgeAmount('quiz-accel')),
       text: '答题冷却 x{value}',
+    },
+  },
+  {
+    id: 'quiz-store',
+    name: '答题储存',
+    category: 'command',
+    description: '冷却结束时将储存答题次数,每级使储存上限+1',
+    maxAmount: new Decimal(10),
+    //100+20n
+    cost: linear({ a: 100, b: 20, label: '答题储存价格' }),
+    require: [['quiz-accel', new Decimal(5)]],
+    canBuy: () => true,
+    effectText(): string {
+      return `储存上限 ${formatWhole(quizStoreLimit())}(当前储存 ${player.quizStored})`
     },
   },
   {
@@ -320,6 +353,20 @@ export function knowledgeAmount(id: string): Decimal {
 /**某知识升级是否已购买至少1次 */
 export function hasKnowledge(id: string): boolean {
   return knowledgeAmount(id).gte(1)
+}
+/**答题储存上限(知识升级"答题储存"的等级;0表示冷却结束后不储存答题次数) */
+export function quizStoreLimit(): number {
+  return knowledgeAmount('quiz-store').toNumber()
+}
+/**离线时间上限(秒)=基准6小时+已购"离线延长"等级×1小时 */
+export function offlineTimeLimit(): Decimal {
+  return new Decimal(OFFLINE_LIMIT_BASE).add(
+    new Decimal(OFFLINE_LIMIT_PER_LEVEL).mul(knowledgeAmount('time-offline-limit')),
+  )
+}
+/**离线时间的剩余空间(不超过上限;暂停/离线入账与知识兑换共用) */
+export function offlineTimeRoom(): Decimal {
+  return Decimal.max(0, offlineTimeLimit().sub(player.offlineTime))
 }
 /**某知识升级已购n个时下一个的价格 */
 export function knowledgeCost(id: string): Decimal {

@@ -232,3 +232,14 @@ export function sanitizeAutoReset(cfg: unknown): AutoResetConfig {
 export function sanitizeAutoConfig(kind: 'buy' | 'reset', cfg: unknown): AutoConfig {
   return kind == 'buy' ? sanitizeAutoBuy(cfg) : sanitizeAutoReset(cfg)
 }
+
+//------重置记录------
+/**一次无限重置的记录(统计页"重置记录"页展示,只保留最近若干条) */
+export interface InfinityResetRecord {
+  /**本次无限经历的时间(秒,自上次无限重置起) */
+  time: Decimal
+  /**本次获得的无限点数 */
+  gain: Decimal
+  /**无限点速率(gain÷time;time为0时记0) */
+  rate: Decimal
+}

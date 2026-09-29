@@ -23,6 +23,7 @@ import {
   AUTOMATIONS,
   applyAllGlobalAuto,
   applyGlobalAuto,
+  checkSixSevenCfg,
   getGlobalAutomation,
   getLayerAutomation,
   initGlobalFromLayer,
@@ -155,9 +156,10 @@ function toggleItemAt(id: string, itemId: number) {
   const cfg = buyCfg(id)
   cfg.perItem[itemId] = !(cfg.perItem[itemId] === true)
 }
-/**通用写回:把子组件上抛的配置改动写入配置对象 */
+/**通用写回:把子组件上抛的配置改动写入配置对象(顺带判定隐藏成就"six-seven") */
 function applyPatch(cfg: AutoConfig, patch: Partial<AutoConfig>) {
   Object.assign(cfg, patch)
+  checkSixSevenCfg(cfg)
 }
 /**取某元层自动化的配置(元层卡片目前只有自动重置类,故按该形状断言) */
 function metaCfg(id: string): AutoResetConfig {

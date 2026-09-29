@@ -16,8 +16,10 @@ import { updateAchievements } from '@/logic/achievements'
 import { addLog } from '@/data/log'
 import { formatTime } from '@/tools/format'
 import { settings } from '@/app/settings'
-import { getPsdSpeed, hasKnowledge } from '@/compute/knowledge'
-import { OFFLINE_THRESHOLD } from '@/data/constants'
+import { getPsdSpeed, hasKnowledge, offlineTimeLimit, offlineTimeRoom } from '@/compute/knowledge'
+import { OFFLINE_THRESHOLD, THOUSAND_YEARS_SECONDS } from '@/data/constants'
+import { updateQuizStorage } from '@/logic/commands'
+import { unlockAchievementById } from '@/logic/achievements'
 import { openConfirm } from '@/app/dialog'
 
 const FPS: number = 60
@@ -70,6 +72,8 @@ export function gameLoop(dt: Decimal) {
   lockInvalidChallenges()
   applyChallengePenalties(dt)
   updateAchievements()
+  //答题储存:冷却溢出的答题次数按时间戳一次结清(与生产/自动化无关,放帧末)
+  updateQuizStorage()
   //开发构建自检:帧内若有写状态没清缓存,标了static的数值会在这里暴露出来
   if (!import.meta.env.PROD) runStaticSelfCheck('帧末')
 }
@@ -108,17 +112,31 @@ export function tick() {
   addValue('realTime', new Decimal(1 / FPS))
   gameLoop(new Decimal(1 / FPS))
 }
+/**把离线得到的时长存入离线时间(总量受上限约束,满了就不再累积) */
+function storeOfflineTime(seconds: Decimal) {
+  addValue('offlineTime', Decimal.min(seconds, offlineTimeRoom()))
+}
 /**真·主循环 */
 export function mainLoop() {
   let dt = new Decimal((Date.now() - player.lastPlay) / 1000)
   const realDt = new Decimal(dt)
   player.lastPlay = Date.now()
   if (player.paused) {
-    //检测游戏是否暂停:能暂停必然已购买升级"暂停功能",期间时间储存为离线时间
-    addValue('offlineTime', dt)
+    //检测游戏是否暂停:能暂停必然已购买升级"暂停功能",期间时间储存为离线时间(同样受离线上限约束)
+    storeOfflineTime(dt)
   } else if (dt.gte(OFFLINE_THRESHOLD)) {
     //若距上一次加载超过一定时间，则认为玩家离线
-    addLog('info', `欢迎回来!你离线了${formatTime(dt)}.`)
+    //隐藏成就"千年之后":把系统时间调到1000年之后也算(判定用原始离线时长,不受离线上限影响)
+    if (dt.gte(THOUSAND_YEARS_SECONDS)) unlockAchievementById('s21')
+    //单次离线最多结算"离线时间上限"的时长,多出的部分不结算(转为加速时间的部分同样受它约束)
+    const gained = Decimal.min(dt, offlineTimeLimit())
+    addLog(
+      'info',
+      `欢迎回来!你离线了${formatTime(dt)}.` +
+        (gained.lt(dt)
+          ? `(离线时间上限${formatTime(offlineTimeLimit())},仅结算${formatTime(gained)})`
+          : ''),
+    )
     if (hasKnowledge('time-offline')) {
       //离线进度:默认(或仅有离线进度升级时)全部转为加速时间,购买"离线去向"后可选择储存或询问
       if (player.offlineMode == 'ask') {
@@ -129,13 +147,13 @@ export function mainLoop() {
           confirmText: '储存为离线时间',
           cancelText: '转为加速时间',
         }).then((store) => {
-          if (store) addValue('offlineTime', dt)
-          else addValue('warpTime', dt)
+          if (store) storeOfflineTime(gained)
+          else addValue('warpTime', gained)
         })
       } else if (player.offlineMode == 'store') {
-        addValue('offlineTime', dt)
+        storeOfflineTime(gained)
       } else {
-        addValue('warpTime', dt)
+        addValue('warpTime', gained)
       }
     }
   } else {

@@ -17,12 +17,14 @@ import { settings, saveSettings, cycleTheme, THEMES, type Settings } from '@/app
 import { temp } from '@/data/temp'
 import { type logType, addLog } from '@/data/log'
 import { doHardReset, doLoad, doSave } from '@/app/saveActions'
+import { unlockAchievementById } from '@/logic/achievements'
 import { unlockAllUi } from '@/logic/knowledge'
 import { gameVersion, gameName, isBeta } from '@/data/constants'
 import { CHANGELOG } from '@/data/changelog'
 import { hasKnowledge } from '@/compute/knowledge'
 import { hasInfinityMilestone, infinityPassiveRate } from '@/compute/infinityMilestones'
 import { RESOURCE_ITEMS } from '@/app/resourceRegistry'
+import { hasInfinityUpgrade } from '@/compute/infinity.ts'
 
 type optionsTab = 'settings' | 'hotkeys' | 'about' | 'changelog' | 'statistics'
 const subtab = ref<optionsTab>('settings')
@@ -56,8 +58,14 @@ async function copyExport() {
     //剪贴板不可用时忽略
   }
 }
-/**导入存档(从同一文本框读取) */
+/**导入存档(从同一文本框读取);文本框里是"存档"/"save"时触发隐藏成就"字面意思" */
 function doImport() {
+  const text = exportText.value.trim().toLowerCase()
+  if (text == '存档' || text == 'save') {
+    unlockAchievementById('s22')
+    addLog('info', '请粘贴真实的存档字符串,而不是"存档"这2个字.')
+    return
+  }
   if (importSaveString(exportText.value)) {
     exportText.value = ''
   }
@@ -155,7 +163,7 @@ watch(
 
 //------资源明细页------
 /**统计页内部子标签 */
-const statsTab = ref<'buffs' | 'resources'>('buffs')
+const statsTab = ref<'buffs' | 'resources' | 'records'>('buffs')
 /**全部活跃层级(资源明细页用) */
 const activeLayers = computed(() =>
   getActiveLayers().map(({ key, pos, L }) => ({ key, name: getLayerName(pos), L })),
@@ -253,12 +261,14 @@ const activeLayers = computed(() =>
             普通重置:{{ settings.resetConfirm ? '开' : '关' }}
           </button>
           <button
+            v-if="hasAchievement('a48')"
             :class="['toggle', settings.infinityResetConfirm ? 'toggle-on' : 'toggle-off']"
             @click="toggleSettings('infinityResetConfirm')"
           >
             无限重置:{{ settings.infinityResetConfirm ? '开' : '关' }}
           </button>
           <button
+            v-if="hasInfinityUpgrade('iu25')"
             :class="['toggle', settings.metaDimensionConfirm ? 'toggle-on' : 'toggle-off']"
             @click="toggleSettings('metaDimensionConfirm')"
           >
@@ -424,6 +434,12 @@ const activeLayers = computed(() =>
         >
           资源明细
         </button>
+        <button
+          :class="{ subTab: true, selected: statsTab == 'records' }"
+          @click="statsTab = 'records'"
+        >
+          重置记录
+        </button>
       </div>
 
       <div v-if="statsTab == 'buffs'" id="buffStats">
@@ -438,7 +454,7 @@ const activeLayers = computed(() =>
         </div>
       </div>
 
-      <div v-else id="resourceStats" class="section">
+      <div v-else-if="statsTab == 'resources'" id="resourceStats" class="section">
         <div class="section box left">
           <span class="text bold">存档与时间</span>
           <span class="text">存档创建时间: {{ new Date(player.firstPlay).toLocaleString() }}</span>
@@ -452,22 +468,14 @@ const activeLayers = computed(() =>
           <span class="text bold">全局统计</span>
           <span class="text">已看新闻: {{ player.seenNews.length }} / {{ NEWS_COUNT }}</span>
           <span class="text">成功使用的指令: {{ player.commandCount }}</span>
-          <span class="text">答题次数: {{ player.quizCount }}</span>
+          <span class="text"
+            >答题次数: {{ player.quizCount }} · 已储存答题: {{ player.quizStored }}</span
+          >
           <span class="text"
             >签到: 连续{{ player.checkin.streak }}天 · 上次:{{
               player.checkin.lastDay || '从未'
             }}</span
           >
-        </div>
-        <div v-if="hasAchievement('a48')" class="section box left">
-          <span class="text bold">无限</span>
-          <span class="text">本次无限经历时间: {{ formatTime(player.infinityRunTime) }}</span>
-          <span class="text">无限重置最短时间: {{ formatTime(player.infinityBestResetTime) }}</span>
-          <span class="text">总无限点数: {{ format(player.totalInfinityPoints) }}</span>
-          <span class="text">最佳无限点数/秒: {{ format(player.infinityBestRate) }}</span>
-          <span v-if="hasInfinityMilestone('im100')" class="text">
-            被动无限点数/秒: {{ format(infinityPassiveRate()) }}
-          </span>
         </div>
         <div class="section box left">
           <span class="text bold">层级资源</span>
@@ -487,10 +495,40 @@ const activeLayers = computed(() =>
           </div>
         </div>
       </div>
+
+      <div v-else id="resetRecords" class="section">
+        <div v-if="hasAchievement('a48')" class="section box left">
+          <span class="text bold">无限</span>
+          <span class="text">本次无限经历时间: {{ formatTime(player.infinityRunTime) }}</span>
+          <span class="text">无限重置最短时间: {{ formatTime(player.infinityBestResetTime) }}</span>
+          <span class="text">总无限点数: {{ format(player.totalInfinityPoints) }}</span>
+          <span class="text">最佳无限点数/秒: {{ format(player.infinityBestRate) }}</span>
+          <span v-if="hasInfinityMilestone('im100')" class="text">
+            被动无限点数/秒: {{ format(infinityPassiveRate()) }}
+          </span>
+        </div>
+        <div class="section box left">
+          <span class="text bold">最近10次无限重置(新→旧)</span>
+          <span v-if="player.infinityResetLog.length == 0" class="text">暂无记录</span>
+          <div v-for="(r, i) in player.infinityResetLog" :key="i" class="layerStats">
+            <span class="text bold layerName"
+              >第{{ formatWhole(player.infinityResets.sub(i)) }}次</span
+            >
+            <span class="text"
+              >用时: {{ formatTime(r.time) }} · 获得: {{ format(r.gain) }} 无限点数 · 速率:
+              {{ format(r.rate) }}/秒</span
+            >
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 <style scoped>
+/*统计页的子标签行居中(资源明细/重置记录内容较长,标签靠左会与内容区错位)*/
+div#statistics > .subtabRow {
+  justify-content: center;
+}
 div#options {
   display: flex;
   flex-direction: column;

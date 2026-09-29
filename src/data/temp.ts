@@ -15,6 +15,11 @@ export const temp = reactive({
   debugSpeed: new Decimal(1),
   /**调试模式开关(不存档,生产构建中入口隐藏) */
   debugMode: false,
+  /**
+   * 最近一条"随机数新闻"里抽到的随机数(不存档)
+   * 供隐藏成就"运气非常好"判定:新闻是唯一会滚动刷新的随机数来源,成就不能反过来import app层
+   */
+  lastNewsRoll: 0,
 })
 
 /**清空全部临时层(读档/硬重置/无限重置时调用) */

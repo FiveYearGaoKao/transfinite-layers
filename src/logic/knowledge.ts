@@ -8,6 +8,7 @@ import {
   getKnowledgeUpgrade,
   KNOWLEDGE_UPGRADES,
   knowledgeItem,
+  offlineTimeRoom,
 } from '@/compute/knowledge'
 import { maxBuyable, sumCost } from '@/compute/buying'
 
@@ -37,10 +38,12 @@ export function offlineTimeCost(seconds: Decimal): Decimal {
 }
 /**
  * 用知识购买离线时间
- * @param seconds 购买的离线时间(秒),按1知识=1分钟折算
+ * @param seconds 购买的离线时间(秒),按1知识=1分钟折算;超过离线上限的剩余空间时按剩余空间结算
  * @returns 实际花费的知识
  */
 export function buyOfflineTime(seconds: Decimal): Decimal {
+  //不得买超上限:先按剩余空间夹取,避免收钱却存不下
+  seconds = Decimal.min(seconds, offlineTimeRoom())
   if (seconds.lt(1)) return new Decimal(0)
   const cost = offlineTimeCost(seconds)
   if (player.knowledge.lt(cost)) return new Decimal(0)

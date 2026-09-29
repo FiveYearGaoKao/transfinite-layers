@@ -12,6 +12,8 @@ import {
   getPsdSpeed,
   getUpgradesByCategory,
   hasKnowledge,
+  offlineTimeLimit,
+  offlineTimeRoom,
 } from '@/compute/knowledge'
 import {
   buyOfflineTime,
@@ -146,7 +148,10 @@ const psdSpeed = computed(() => getPsdSpeed())
     <div v-else id="offline" class="section">
       <div class="section">
         <span class="text bold">时间资源</span>
-        <span class="text">离线时间: {{ formatTime(player.offlineTime) }}</span>
+        <span class="text"
+          >离线时间: {{ formatTime(player.offlineTime) }} / 上限
+          {{ formatTime(offlineTimeLimit()) }}</span
+        >
         <span v-if="player.warpTime.gte(1)" class="text">
           时间扭曲剩余: {{ formatTime(player.warpTime) }}
         </span>
@@ -160,8 +165,13 @@ const psdSpeed = computed(() => getPsdSpeed())
           <button
             v-for="p in fixedPresets"
             :key="p.label"
-            :class="['toggle', { affordable: player.knowledge.gte(offlineTimeCost(p.sec)) }]"
-            :disabled="player.knowledge.lt(offlineTimeCost(p.sec))"
+            :class="[
+              'toggle',
+              {
+                affordable: player.knowledge.gte(offlineTimeCost(p.sec)) && offlineTimeRoom().gt(0),
+              },
+            ]"
+            :disabled="player.knowledge.lt(offlineTimeCost(p.sec)) || offlineTimeRoom().lte(0)"
             @click="buyOfflineTime(p.sec)"
           >
             {{ p.label }}
@@ -169,8 +179,8 @@ const psdSpeed = computed(() => getPsdSpeed())
           <button
             v-for="pct in pctPresets"
             :key="pct"
-            :class="['toggle', { affordable: player.knowledge.gt(0) }]"
-            :disabled="player.knowledge.lte(0)"
+            :class="['toggle', { affordable: player.knowledge.gt(0) && offlineTimeRoom().gt(0) }]"
+            :disabled="player.knowledge.lte(0) || offlineTimeRoom().lte(0)"
             @click="buyOfflineTimePct(pct)"
           >
             {{ pct * 100 }}%

@@ -23,4 +23,10 @@ export const STORY: StoryChapter[] = [
     text: '(文本待策划填充)当点数终于越过 1.79e308,你触碰到被称为"无限"的边界。但远方的旅人告诉你:那只是一个精度的终点,真正的无限,藏在更深的层级里。',
     isUnlocked: () => player.achievements.includes('a48'),
   },
+  {
+    id: 'omega',
+    title: '进位',
+    text: '(文本待策划填充)你到达了层级10——十层折叠成一个新的数字 ω。世界深度到此为止:ω 之后的内容,留给未来的旅程。',
+    isUnlocked: () => player.achievements.includes('a78'),
+  },
 ]

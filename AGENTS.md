@@ -8,7 +8,7 @@ npm run build        # type-check → build-only (removes dist/ first)
 npm run type-check   # vue-tsc --build (NOT tsc — .vue files; covers src/ and scripts/)
 npm run lint         # eslint . --fix (also lints scripts/)
 npm run format       # prettier --write src/
-npm run check        # all collision-check scripts (pricing/effects/save/achievements)
+npm run check        # all collision-check scripts (pricing/effects/save/achievements/meta/commands/worldDepth)
 ```
 
 **Build order matters**: `build` removes `dist/` with `fs.rmSync`, then runs `type-check` + `build-only` in parallel. Vite config has `build.emptyOutDir: false` — the rm step is manual because of this.
@@ -53,7 +53,7 @@ Full architecture & effect mechanism docs: `docs/面向开发者/` (架构.md, �
 
 ### Save system
 - Custom serialization in `save/save.ts`. Checksum (`save/checksum.ts`) is computed over the `markDecimals`-serialized result and verified on load for saves with `version >= CHECKSUM_VERSION` (older saves skip verification). It is an integrity check, not anti-cheat — the algorithm is public in source.
-- No backwards compatibility for old saves (migration.ts is empty).
+- Missing fields in old saves fall back to `initializeSave()` defaults (blank-shape fill + `save/validate.ts` shape check), so adding a field normally needs no other change; `save/migration.ts` is only for data transforms (rename/recompute) that defaults cannot express.
 
 ### Type system
 - `vue-tsc` handles `.vue` type-checking; plain `tsc` will fail on `.vue` imports.
@@ -87,6 +87,8 @@ npm run check:effects       # folded plan vs per-effect evaluation, inversion ro
 npm run check:save          # export→import round-trip, checksum tampering, shape pruning, load guards, migration
 npm run check:achievements   # trigger buckets, manual achievements have an unlock site in src/
 npm run check:meta           # meta-dimension boost formulas, dimension-count growth, forced reset, save round-trip
+npm run check:commands        # quiz cooldown/storage, offline-time cap, new save fields round-trip
+npm run check:worldDepth      # layerDepth promotion gate, [1,0] unlock path, coordinate≠height semantics
 ```
 
 Balance/progression changes: `node scripts/run-ts.mjs scripts/sim.ts [minutes] [stepSeconds] [printEvery] [--bot=phased|greedy|none] [--fresh] [--max-step=seconds]` runs the real `gameLoop` headlessly (it loads the real save if one is present) and prints a progress timeline plus metric snapshots. `--bot=phased` (the default for balance runs) adds a scripted player (`scripts/bot.ts`) that acts only through the same `logic/` entry points the UI buttons use — no debug commands, no direct state writes — with a phase machine for the opening (`--opening=invest|fast`), the layer-2 gate (`--next-gain=N`, i.e. a24 + N points of the layer below) and the a24 side quest (`--no-a24` to disable); `--bot=greedy` is the branch-free lower bound. Use `--max-step=1` for strategy comparisons: otherwise the bot is throttled to one action per 60 game seconds when idle. Report before/after runs instead of a guess; endgame criteria, the metric table, the deliberate-achievement list and the measured opening comparison: `docs/面向开发者/测试与平衡.md` §五.

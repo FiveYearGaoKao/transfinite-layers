@@ -1,6 +1,7 @@
 import { gameName, gameVersion } from '@/data/constants'
 import { randInt } from '@/tools/utils'
 import { player } from '@/data/player'
+import { temp } from '@/data/temp'
 import { format } from '@/tools/format'
 import { getBase, getHighestActiveLayer, getLayerName, getPoints } from '@/access'
 type newsItem = string | (() => string)
@@ -34,8 +35,12 @@ const NEWS: newsItem[] = [
   '',
   '能有点创新不',
   //随机数
-  () => `这是一个1~10000的随机数:${randInt(1, 10001)},如果它大于9900,说明你的运气很好;\
-    如果它大于9990,说明你的运气非常好;如果它大于10000,说明你开了.`,
+  () => {
+    //记录本次抽到的随机数(隐藏成就"运气非常好"用):成就侧不能反向import本文件,故经data/temp中转
+    temp.lastNewsRoll = randInt(1, 10001)
+    return `这是一个1~10000的随机数:${temp.lastNewsRoll},如果它大于9900,说明你的运气很好;\
+    如果它大于9990,说明你的运气非常好;如果它大于10000,说明你开了.`
+  },
   '想通过重写Math.random控制随机数?不存在的!',
   //增量游戏笑话
   '增量游戏核心要素之一:滚动新闻',

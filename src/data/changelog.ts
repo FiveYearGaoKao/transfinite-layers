@@ -2,6 +2,15 @@
 //按版本从新到旧排列
 export const CHANGELOG: { version: string; name?: string; notes: string[] }[] = [
   {
+    version: 'v0.2.0',
+    name: '无限时代',
+    notes: [
+      '添加了5个隐藏成就',
+      '添加了新的知识升级:答题储存',
+      '为离线时间设置了上限(初始6小时),可用知识升级提高',
+    ],
+  },
+  {
     version: 'v0.1.6',
     name: '元维度提升',
     notes: [

@@ -249,6 +249,9 @@ function load(s: string): number {
     if (!(player.infinityBestRate?.gte(0) && player.infinityBestRate.isFinite())) {
       player.infinityBestRate = new Decimal(0)
     }
+    //答题储存的两个number字段:NaN/负数会让储存结算变成NaN并一直错下去(形状校验只看类型,挡不住NaN)
+    if (!(Number.isFinite(player.quizNextAt) && player.quizNextAt >= 0)) player.quizNextAt = 0
+    if (!(Number.isFinite(player.quizStored) && player.quizStored >= 0)) player.quizStored = 0
     player.metaAutomations = sanitizeMetaAutomations(player.metaAutomations)
     //全局自动化模板:补齐每种配置形状的字段(缺失类型由logic/automations按默认创建)
     if (player.autoGlobal?.cfgs) {

@@ -27,6 +27,7 @@ import {
   type RegisteredEffect,
 } from '@/compute/effects'
 import { addLog } from '@/data/log'
+import { temp } from '@/data/temp'
 import { NEWS_COUNT } from '@/app/news'
 import type { LayerId } from '@/data/types'
 import { compareLayer } from '@/tools/ordinal'
@@ -473,7 +474,7 @@ const normalAchievements: AchievementDef[] = [
   },
   {
     id: 'a58',
-    name: '无尽轮回',
+    name: '循环之中',
     description: '无限重置至少10次',
     reward: 80,
     isCompleted: () => player.infinityResets.gte(10),
@@ -507,6 +508,12 @@ const normalAchievements: AchievementDef[] = [
     trigger: 'infinity',
     //无限重置删除除层级0外的0阶层级,故"只解锁过层级0"等价于此时层级表里只有层级0(判定在删层之前)
     isCompleted: () => getOrderedLayers('asc').length == 1,
+    effect: {
+      type: 'add',
+      target: 'depthPoints:base',
+      value: () => new Decimal(1),
+    },
+    effectText: '知识升级"深度加成"的底数+1',
   },
   {
     id: 'a65',
@@ -574,14 +581,14 @@ const normalAchievements: AchievementDef[] = [
   },
   {
     id: 'a74',
-    name: '千次轮回',
+    name: '无尽轮回',
     description: '进行1000次无限重置',
     reward: 100,
     isCompleted: () => player.infinityResets.gte(1000),
   },
   {
     id: 'a75',
-    name: '难上加难',
+    name: '无用的挑战',
     description: '在无限挑战5中完成普通挑战5至少5次',
     reward: 125,
     isCompleted: () => isChallengeActive('ic5') && challengeCompletions('c5').gte(5),
@@ -601,10 +608,18 @@ const normalAchievements: AchievementDef[] = [
     trigger: 'reset',
     isCompleted: (ev) => gotLayerPoints(ev, [9]),
   },
+  {
+    id: 'a78',
+    name: '十全十美',
+    description: '解锁层级10...吗?',
+    reward: 200,
+    trigger: 'reset',
+    isCompleted: (ev) => gotLayerPoints(ev, [10]),
+  },
 ]
 
 //------隐藏成就:较难获取,未解锁时名称作为提示,描述显示"???";奖励固定1知识------//
-//s11/s14/s15/s16没有可判定的条件,只能由触发那一处的代码调用unlockAchievementById
+//s11/s14/s15/s16/s17/s18/s21/s22没有可判定的条件,只能由触发那一处的代码调用unlockAchievementById
 const secretAchievements: AchievementDef[] = [
   {
     id: 's11',
@@ -653,6 +668,47 @@ const secretAchievements: AchievementDef[] = [
     secret: true,
     reward: 1,
     trigger: 'manual',
+  },
+  {
+    id: 's17',
+    name: '这里不是MC',
+    description: '在指令框里输入Minecraft的指令',
+    secret: true,
+    reward: 1,
+    trigger: 'manual',
+  },
+  {
+    id: 's18',
+    name: 'six-seven',
+    description: '把自动化的所有配置项都设为67',
+    secret: true,
+    reward: 1,
+    trigger: 'manual',
+  },
+  {
+    id: 's21',
+    name: '千年之后',
+    description: '把时间调到1000年之后',
+    secret: true,
+    reward: 1,
+    trigger: 'manual',
+  },
+  {
+    id: 's22',
+    name: '字面意思',
+    description: '在存档框里输入"存档"或"save"后点击导入',
+    secret: true,
+    reward: 1,
+    trigger: 'manual',
+  },
+  {
+    id: 's23',
+    name: '运气非常好',
+    description: '在带随机数的新闻里得到一个大于9990的数',
+    secret: true,
+    reward: 1,
+    //阈值取自新闻文案(>9900"运气很好"、>9990"运气非常好"):随机数由app/news写进temp,成就侧不反向引用app层
+    isCompleted: () => temp.lastNewsRoll > 9990,
   },
 ]
 

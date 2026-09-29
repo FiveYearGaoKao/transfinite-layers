@@ -105,7 +105,7 @@ const SLOT_B12_BASE = defineSlot('b12:base', () => new Decimal(2))
 
 ### cap 是一等效果类型
 
-软上限不再写成 `custom`、也不再在公式里直接调 `softCapValue`,而是声明成 `cap`:
+软上限一律声明成 `cap`(不要写成 `custom`,也不要在公式里直接调 `softCapValue`):
 
 ```ts
 defineEffect('production', {
@@ -134,7 +134,7 @@ defineEffect('production', {
 | `cap`    | `softCapValue(out, m, 1/p, h)`(要求 p>0) |
 | `custom` | **不可逆** → 返回 `undefined`            |
 
-- 参数全部来自槽位,因此 iu52/ic4/c4 等对参数的修改**自动反映到求逆**,调用方不再手传幂次。
+- 参数全部来自槽位,因此 iu52/ic4/c4 等对参数的修改**自动反映到求逆**;调用方不传幂次。
 - **可逆性是数值点的可推导属性**:点上只要出现任何 `custom` 步骤,`invertAt` 就返回 `undefined`,调用方退回通用搜索
   (契约不变:**锚点只影响迭代次数,不影响正确性**,见 `tools/bisect.ts`)。
 - 因此:**价格类数值点(`dimensionCost`/`buyableCost`)的管道禁止 `custom`**;
@@ -179,7 +179,7 @@ interface Curve {
 - 求和口径:相对误差 <1%(常量/线性/几何为精确,幂族用 Euler-Maclaurin 积分近似);`floored` 只把正向取整,和与逆不建模取整。
 - **`maxBuyable` 的两条路**:物品声明了 `sum`/`sumInverse` 就解析求解再在锚点附近做有界修正(±8步),
   修正不收敛或没声明时退回带锚点的 `maxSatisfying`(见 `compute/buying.ts`)。
-- 开发构建自检:创建曲线时做 `inverse(at(n)) ≈ n` 与 `sum → sumInverse → k` 往返校验(和逆允许±1),正逆/和解不再同源会当场报错。
+- 开发构建自检:创建曲线时做 `inverse(at(n)) ≈ n` 与 `sum → sumInverse → k` 往返校验(和逆允许±1),正逆/和解必须同源,否则当场报错。
 
 **底数(base)约束**:
 
@@ -257,8 +257,7 @@ for (const u of UPGRADES) {
 
 - **效果计划**:帧内把"该数值点的生效效果 + 折叠后的步骤"物化一次(`数值点id|层级键|物品id` 缓存):
   判定生效、把相邻同类 static 效果折成一个数值、解析 `cap` 的阈值/幂次、留下 dynamic 效果待读取时现算。
-  **折叠只在计划里做一次**(与注册顺序有关,与层级/物品/挑战状态无关),不再单独维护"效果模板"表。
-  读取只做算术,不再重解管线。
+  **折叠只在计划里做一次**(与注册顺序有关,与层级/物品/挑战状态无关);读取只做算术,不重解管线。
 - **静态折叠**:`static: true` 的效果进 fold 段(add求和/mul求积/exp幂次求积);
   段内成员可被单独禁用,合成时只累计生效成员(同类型可交换可结合,故这样合成是精确的)。
   于是 `dimensionMult` 的十来条乘法加成会合成 1 步,只有真正的动态效果仍逐步求值。

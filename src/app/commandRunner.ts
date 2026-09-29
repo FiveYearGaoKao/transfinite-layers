@@ -13,6 +13,7 @@ import {
   submitQuizAnswer,
 } from '@/logic/commands'
 import { getPlayerValue, setPlayerValue } from '@/logic/debug'
+import { unlockAchievementById } from '@/logic/achievements'
 import { settings, saveSettings, applyTheme } from '@/app/settings'
 import { formatTime } from '@/tools/format'
 import { cacheStats, resetCacheStats } from '@/compute/frameCache'
@@ -42,6 +43,20 @@ const EGG_LINES = [
   '彩蛋之所以叫彩蛋,是因为它不会孵出鸡。',
   '蛋疼。',
   '你被骗了,这里没有彩蛋。',
+]
+
+/**几个著名的Minecraft指令(隐藏成就"这里不是MC"只看这些名字,不实现任何MC行为) */
+const MC_COMMANDS = [
+  'gamemode',
+  'give',
+  'tp',
+  'teleport',
+  'time',
+  'kill',
+  'effect',
+  'summon',
+  'setblock',
+  'weather',
 ]
 
 /**set指令可修改的布尔设置键 */
@@ -228,6 +243,12 @@ export function executeCommand(input: string): boolean {
   }
   const [raw, ...rest] = trimmed.slice(1).split(/\s+/)
   const cmd = (raw ?? '').toLowerCase()
+  //隐藏成就"这里不是MC":MC指令只是彩蛋,不走指令系统的解锁判定
+  if (MC_COMMANDS.includes(cmd)) {
+    unlockAchievementById('s17')
+    addLog('info', '这里不是MC,没有这条指令。')
+    return true
+  }
   const info = COMMANDS.find((c) => c.cmd == cmd)
   //指令系统整体由知识升级"指令系统"解锁;调试指令不受此限制(仅开发构建+调试模式可用)
   if (!hasKnowledge('command-checkin') && info?.debugOnly !== true) {

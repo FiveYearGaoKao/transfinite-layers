@@ -35,8 +35,5 @@ export function doMetaDimensionBoost() {
   padAllLayers()
   //强制执行无限重置:清空除层级0外的所有0阶层级、清空普通挑战与各层自动化配置,但不给无限点数
   doInfinityReset(true)
-  addLog(
-    'progress',
-    `元维度提升!第${formatWhole(boosts)}次,当前每层维度数量${dimensionCount()}`,
-  )
+  addLog('info', `进行第${formatWhole(boosts)}次元维度提升,当前每层维度数量${dimensionCount()}`)
 }

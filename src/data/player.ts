@@ -1,6 +1,12 @@
 import Decimal from 'break_eternity.js'
 import { reactive } from 'vue'
-import { initializeLayer, type LayerList, type LayerAutomation, type AutoConfig } from './types'
+import {
+  initializeLayer,
+  type LayerList,
+  type LayerAutomation,
+  type AutoConfig,
+  type InfinityResetRecord,
+} from './types'
 import { gameVersion, INITIAL_BASE, DEFAULT_BOOST_SPEED } from './constants'
 import type { QuizQuestion } from '@/tools/quiz'
 
@@ -96,8 +102,12 @@ export interface Player {
   challengeTab: string
   /**签到数据:lastDay为最后签到日期(YYYY-MM-DD),streak为连续签到天数,highStreak为随机奖励>90的连续天数 */
   checkin: { lastDay: string; streak: number; highStreak: number }
-  /**上次答题尝试的时间戳(毫秒,用于冷却) */
-  quizLastAt: number
+  /**当前冷却结束的时间戳(毫秒):冷却结束时若未作答,答题次数按知识升级"答题储存"储存起来 */
+  quizNextAt: number
+  /**已储存的答题次数(上限为知识升级"答题储存"的等级,0表示不储存) */
+  quizStored: number
+  /**最近若干次无限重置的记录(新→旧;统计页"重置记录"页用) */
+  infinityResetLog: InfinityResetRecord[]
   /**已看过的滚动新闻索引(隐藏成就"新闻收藏家"用) */
   seenNews: number[]
   /**成功使用的指令数(统计用) */
@@ -155,7 +165,9 @@ export function initializeSave(): Player {
     infinityTab: 'upgrades',
     challengeTab: 'normal',
     checkin: { lastDay: '', streak: 0, highStreak: 0 },
-    quizLastAt: 0,
+    quizNextAt: 0,
+    quizStored: 0,
+    infinityResetLog: [],
     seenNews: [],
     commandCount: 0,
     quizCount: 0,

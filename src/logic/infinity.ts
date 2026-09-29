@@ -24,6 +24,9 @@ import { checkInfinityResetAchievements } from './achievements'
 import { recreateLayer0, wipeLayersWhere } from './layerStructure'
 import { clearFrameCache } from '@/compute/frameCache'
 
+/**统计页"重置记录"页保留的无限重置条数 */
+const INFINITY_RESET_LOG_SIZE = 10
+
 /**
  * 进行无限重置:获得无限点数,删除层级0以外的所有0阶层级(层级0重建为1点数的全新初始状态),
  * 清空普通挑战完成记录并退出激活挑战(无限里程碑im8解锁后改为保留1次完成次数);成就/知识/无限点数等全局数据保留
@@ -50,16 +53,19 @@ function doInfinityResetInner(forced: boolean): void {
       'info',
       `无限重置!用时${formatTime(player.infinityRunTime)},获得${formatWhole(gain)}无限点数`,
     )
+
+    const time = player.infinityRunTime
+    const rate = time.gt(0) ? gain.div(time) : new Decimal(0)
     //记录最佳"无限点数/秒"(收益÷本次无限时长),供无限里程碑im100的被动收益使用
     //时长不设下限,仅用>0挡住同一帧内连续两次重置导致的除零
-    if (player.infinityRunTime.gt(0)) {
-      player.infinityBestRate = Decimal.max(
-        player.infinityBestRate,
-        gain.div(player.infinityRunTime),
-      )
-    }
+    player.infinityBestRate = Decimal.max(player.infinityBestRate, rate)
     //记录最短重置时间(取历史最小值),并归零本次无限经历的时间
-    player.infinityBestResetTime = Decimal.min(player.infinityBestResetTime, player.infinityRunTime)
+    player.infinityBestResetTime = Decimal.min(player.infinityBestResetTime, time)
+    //记录本次重置(统计页"重置记录"页展示最近若干次的用时/获得/速率;强制重置不记录)
+    player.infinityResetLog = [{ time, gain, rate }, ...player.infinityResetLog].slice(
+      0,
+      INFINITY_RESET_LOG_SIZE,
+    )
     //无限重置瞬间的成就判定(如a65"不解锁其它层级进行无限重置"):必须在下面删层之前求值
     checkInfinityResetAchievements({ gain })
   }

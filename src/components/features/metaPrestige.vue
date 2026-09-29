@@ -60,7 +60,7 @@ const requirement = computed(() => metaDimensionRequirement())
         </template>
       </span>
       <span class="text requirement"
-        >需求：{{ formatWhole(bought) }}/{{ formatWhole(requirement) }}</span
+        >需求：{{ formatWhole(bought) }}/{{ formatWhole(requirement) }} 维度购买总数</span
       >
       <span class="text faint">
         购买的维度总数 =

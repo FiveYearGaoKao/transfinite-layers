@@ -3,12 +3,27 @@
 //2. 行为:三类自动检查各自只解锁自己那一批(构造出让该类条件成立的状态,并检查幂等)
 //3. 手动成就:每个都必须在源码里有 unlockAchievementById 触发点,否则永远无法解锁
 //4. 约定:隐藏成就标记secret且奖励固定1知识;非手动成就必须带判定条件;id不得重复
+//5. 条件型隐藏成就的判据:s23(新闻随机数阈值)、s18(单条配置全67/所有层级的所有自动化全67)
 //用法:node scripts/run-ts.mjs scripts/checkAchievements.ts
 import { readdirSync, readFileSync } from 'node:fs'
 import Decimal from 'break_eternity.js'
 import { player } from '@/data/player'
-import { getLayer } from '@/access'
+import { temp } from '@/data/temp'
+import { getLayer, getOrderedLayers } from '@/access'
 import { clearFrameCache } from '@/compute/frameCache'
+import {
+  defaultAutoReset,
+  type AutoBuyConfig,
+  type AutoConfig,
+  type AutoResetConfig,
+} from '@/data/types'
+import {
+  AUTO_RESET_ID,
+  AUTOMATIONS,
+  allLayersAllSixSeven,
+  getLayerAutomation,
+  isAllSixSeven,
+} from '@/logic/automations'
 import {
   checkInfinityResetAchievements,
   checkResetAchievements,
@@ -104,8 +119,9 @@ freshSave()
 //层级重置成就按"绝对高度"认层,所以逐层构造:重置层级n解锁层级n,同时给"获得至少1个层级n点数"发收益
 //(这些条件只在层级重置瞬间可能成立,不能靠事后造状态)
 const resetNew = newlyUnlocked(() => {
-  //覆盖重置桶成就引用到的所有高度(现为层级1~4与层级6):改成就条件时同步这份高度清单
-  for (const n of [1, 2, 3, 4, 6]) {
+  //覆盖重置桶成就引用到的所有高度(现为层级1~4、6、9、10):改成就条件时同步这份高度清单
+  //(测试夹具直接建到槽位10:base=10的窗口正常只会轮转到高度10,这里只关心"绝对高度=引用"的判定)
+  for (const n of [1, 2, 3, 4, 6, 9, 10]) {
     //先让目标层存在(层级1由解锁层级1的重置产生,故这一轮要先建层级1再发这次重置事件)
     ensureLayer0Order(n)
     checkResetAchievements({ layer: [n], gain: new Decimal('1e300') })
@@ -143,5 +159,48 @@ check(
   '手动成就不会由自动检查解锁',
   ![...frameNew, ...resetNew, ...infinityNew].some((id) => manualIds.has(id)),
 )
+
+console.log('== 6. 条件型隐藏成就的判据(s18/s23) ==')
+/**把一个自动化配置的所有数值项设为67(s18的两条路线共用这个判据) */
+function setAll67(cfg: AutoConfig) {
+  cfg.priority = 67
+  if ('combine' in cfg) {
+    const c = cfg as AutoResetConfig
+    c.time = 67
+    c.point = new Decimal(67)
+    c.mult = new Decimal(67)
+    c.power = new Decimal(67)
+  } else (cfg as AutoBuyConfig).percent = 67
+}
+//s23:阈值取自新闻文案(>9990),随机数由app/news写进temp
+freshSave()
+temp.lastNewsRoll = 9990
+updateAchievements()
+check('s23:不大于9990不解锁', !player.achievements.includes('s23'))
+temp.lastNewsRoll = 9991
+updateAchievements()
+check('s23:大于9990解锁', player.achievements.includes('s23'))
+temp.lastNewsRoll = 0
+//s18:①一条配置的所有数值项为67;②所有层级的所有自动化类型都为67(全局配置路线)
+freshSave()
+const oneCfg = defaultAutoReset()
+check('s18:默认配置不算全67', !isAllSixSeven(oneCfg))
+setAll67(oneCfg)
+check('s18:单条配置全67', isAllSixSeven(oneCfg))
+freshSave()
+ensureLayer0Order(2)
+for (const e of getOrderedLayers('asc')) {
+  const auto = getLayerAutomation(e.pos)
+  for (const def of AUTOMATIONS) setAll67(auto.cfgs[def.id]!)
+}
+check('s18:所有层级的所有自动化都全67', allLayersAllSixSeven())
+check(
+  's18:任一类型的任一字段不是67就不算',
+  (() => {
+    getLayerAutomation([1])!.cfgs[AUTO_RESET_ID]!.priority = 1
+    return !allLayersAllSixSeven()
+  })(),
+)
+check('s18:解锁点存在(源码扫描见第5节)', source.includes(`unlockAchievementById('s18')`))
 
 process.exit(reportChecks() ? 0 : 1)

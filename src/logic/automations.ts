@@ -24,6 +24,7 @@ import { getBuyables } from '@/compute/buyables'
 import { hasInfinityMilestone } from '@/compute/infinityMilestones'
 import { buyBuyable, buyDimension, buyUpgrade } from './purchase'
 import { doReset } from './reset'
+import { unlockAchievementById } from './achievements'
 
 //------自动化类型id------
 //各来源统一引用这里的常量:注册表、配置读写、UI(层级页的逐项开关等)都不再手写类型字符串
@@ -155,6 +156,7 @@ export function applyGlobalAuto(typeId: string) {
   forEachLayer('asc', (e) => {
     getLayerAutomation(e.pos).cfgs[typeId] = cloneCfg(tpl)
   })
+  checkSixSevenAll()
 }
 /**将全局配置模板的全部类型应用到所有(真实)层级 */
 export function applyAllGlobalAuto() {
@@ -286,6 +288,49 @@ export function toggleAllAuto() {
       if (cfg) def.setAll(e.pos, cfg, !anyOn)
     }
   })
+}
+
+//------隐藏成就"six-seven"(s18)------
+/**s18的魔数 */
+const SIX_SEVEN = 67
+/**
+ * 一个自动化配置的数值项是否全为67
+ * 自动购买类看优先级与消耗百分比,自动重置类看优先级/时间/点数/倍率/幂次(开关与判定方式不是数值项)
+ */
+export function isAllSixSeven(cfg: AutoConfig): boolean {
+  if ('combine' in cfg) {
+    const c = cfg as AutoResetConfig
+    return (
+      c.priority == SIX_SEVEN &&
+      c.time == SIX_SEVEN &&
+      c.point.eq(SIX_SEVEN) &&
+      c.mult.eq(SIX_SEVEN) &&
+      c.power.eq(SIX_SEVEN)
+    )
+  }
+  const b = cfg as AutoBuyConfig
+  return b.priority == SIX_SEVEN && b.percent == SIX_SEVEN
+}
+/**所有真实层级的所有自动化类型的配置项是否都为67(全局配置路线) */
+export function allLayersAllSixSeven(): boolean {
+  const layers = getOrderedLayers('asc')
+  if (layers.length == 0) return false
+  return layers.every((e) => {
+    const auto = player.automations[layerKey(e.pos)]
+    if (!auto?.cfgs) return false
+    return AUTOMATIONS.every((def) => {
+      const cfg = auto.cfgs[def.id]
+      return cfg != null && isAllSixSeven(cfg)
+    })
+  })
+}
+/**编辑单个配置后检查s18:该配置的所有数值项都为67即解锁 */
+export function checkSixSevenCfg(cfg: AutoConfig) {
+  if (isAllSixSeven(cfg)) unlockAchievementById('s18')
+}
+/**把全局模板应用到层级后检查s18:所有层级的所有自动化都为67即解锁 */
+function checkSixSevenAll() {
+  if (allLayersAllSixSeven()) unlockAchievementById('s18')
 }
 
 //------执行逻辑------

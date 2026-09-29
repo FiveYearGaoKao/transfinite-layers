@@ -32,12 +32,44 @@ import {
 
 //------结构阶段------
 /**
- * 一帧的结构阶段:同步全部临时层
+ * 一帧的结构阶段:先尝试加深世界,再同步全部临时层
  * 临时层只更新高度(窗口内最高真实层级高度+1)或按需创建,不参与生产/加成/自动化
  */
 export function syncLayerStructure() {
+  promoteWorldDepth()
   syncTempLayers([0], player.layerDepth - 1)
 }
+
+/**本会话是否已提示过"世界深度已到上限(下一阶内容未定义)" */
+let worldDepthNoticeShown = false
+
+/**
+ * 尝试加深世界(坐标的最大长度+1,即允许出现更高一阶的层级)
+ * 条件:最深那个阶(阶 = layerDepth-1)的窗口顶端层级高度达到序数进制(该位进位,如0阶的"层级10"),
+ *       **且下一阶的内容已在 compute/layerContent 中定义**(hasLayerContent(layerDepth))
+ * 内容未定义时什么都不做(只提示一次):这样不会出现"点了没反应的死层级",也保证 I1(坐标长度 ≤ layerDepth)恒成立
+ * 注:提升不改变已有键(坐标是绝对编号),故不涉及键迁移;更深一阶的临时层由本帧紧随其后的结构阶段建立
+ * @returns 是否加深了世界
+ */
+export function promoteWorldDepth(): boolean {
+  const order = player.layerDepth - 1
+  //该阶窗口的顶端层级(0号槽位是层级0,故只有它时说明这一阶还没有层级)
+  const top = highestActiveLayer([0], order)
+  if (getLayerOrder(top) != order) return false
+  const L = getLayer(top)
+  if (!L || L.level.lt(player.base)) return false
+  if (!hasLayerContent(player.layerDepth)) {
+    if (!worldDepthNoticeShown) {
+      worldDepthNoticeShown = true
+      addLog('progress', '你已到达当前版本终局，当前世界无法容纳更多层级')
+    }
+    return false
+  }
+  player.layerDepth += 1
+  addLog('progress', `世界加深了:层级编号现在最多可以有${player.layerDepth}位`)
+  return true
+}
+
 /**递归同步各阶窗口的临时层 */
 function syncTempLayers(pos: LayerId, n: number) {
   if (n > 0) {

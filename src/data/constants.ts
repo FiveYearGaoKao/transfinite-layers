@@ -19,6 +19,12 @@ export const INITIAL_BASE: number = 10
 export const DIMENSION_COUNT: number = 4
 /**离线检测的阈值(秒) */
 export const OFFLINE_THRESHOLD: number = 120
+/**离线时间上限的基准值(秒,6小时;知识升级"离线延长"每级+1小时) */
+export const OFFLINE_LIMIT_BASE: number = 6 * 3600
+/**知识升级"离线延长"每级提高的离线时间上限(秒) */
+export const OFFLINE_LIMIT_PER_LEVEL: number = 3600
+/**隐藏成就"千年之后"的阈值:单次离线时长达到1000年(秒) */
+export const THOUSAND_YEARS_SECONDS: number = 1000 * 31536000
 /**日志的最大条数 */
 export const MAX_LOG_COUNT: number = 100
 /**1知识可兑换的离线时间(秒) */
