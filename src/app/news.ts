@@ -104,6 +104,9 @@ const NEWS: newsItem[] = [
   'Testify',
   '你也许意识到了这件事,"无限"是掩盖未来的虚像...,前方是毁灭亦是重生.',
   '!?感叹号问号问号感叹号?!',
+  'If I am a set of POINTS, then I will give you my DIMENSIONS',
+  'If I approach INFINITY, then you will be my LIMITATION(指软上限)',
+  'And we can travel, to AD(这条可以), to BC(这条不行)',
   //魔塔梗
   () =>
     `你解锁了${getLayerName(getHighestActiveLayer() ?? [0])},这表明你是个勇士,但现在游戏结束了,我将在这里亲手杀死你！\

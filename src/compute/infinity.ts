@@ -208,7 +208,7 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
   {
     id: 'iu35',
     name: '元星系',
-    description: '解锁元星系',
+    description: '解锁元星系(敬请期待)',
     cost: 1e308,
   },
   {
@@ -257,7 +257,7 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
   {
     id: 'iu45',
     name: '元声望升级',
-    description: '解锁元声望升级',
+    description: '解锁元声望升级(敬请期待)',
     cost: 1e308,
     //TODO: 元声望升级机制待实现
   },
@@ -311,7 +311,7 @@ export const INFINITY_UPGRADES: InfinityUpgradeDef[] = [
   {
     id: 'iu55',
     name: '锻造',
-    description: '解锁锻造',
+    description: '解锁锻造(敬请期待)',
     cost: 1e308,
     //TODO: 锻造机制待实现
   },
@@ -351,6 +351,7 @@ export function canBuyInfinityUpgrade(id: string): boolean {
   //第一行无限制,其余行要求同列上一行已购买
   const row = Number(id[2])
   const col = Number(id[3])
+  if (col == 5 && row >= 3) return false //剩下3个无限升级暂时禁止解锁
   if (row > 1 && !hasInfinityUpgrade(`iu${row - 1}${col}`)) return false
   return player.infinityPoints.gte(infinityUpgradeCost(id))
 }

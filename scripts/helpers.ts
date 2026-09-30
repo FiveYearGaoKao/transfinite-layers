@@ -2,7 +2,7 @@
 //约定:脚本用check记录断言,最后reportChecks()打印汇总;开发构建的自检走console.error,
 //      用captureErrors()把它们变成断言(否则只会打印、不会让脚本失败)
 //本文件同时负责"游戏引导":导入各系统的注册模块,使脚本拥有与游戏启动相同的注册状态
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import Decimal from 'break_eternity.js'
 import { initializeSave, player } from '@/data/player'
 import { initializeLayer, type LayerId } from '@/data/types'
@@ -73,20 +73,26 @@ export function reportChecks(): boolean {
 }
 
 /**
- * 载入仓库根目录下的真实存档(未找到或载入失败时保持当前状态)
+ * 载入真实存档(未找到或载入失败时保持当前状态)
  * 真实存档能让断言覆盖到只在后期才生效的分支
+ * @param fileName 指定基准存档的文件名(在 saves/ 目录下,见 saves/README.md);不填则取仓库根目录下的玩家存档
  * @returns 实际载入的文件名(未载入为空串)
  */
-export function loadRealSave(): string {
-  const file = readdirSync('.').find(
-    (f) => f.startsWith('TransfiniteLayers-') && f.endsWith('.txt'),
-  )
+export function loadRealSave(fileName?: string): string {
+  const file =
+    fileName ??
+    readdirSync('.').find((f) => f.startsWith('TransfiniteLayers-') && f.endsWith('.txt'))
   if (!file) {
     console.log('  未找到真实存档,使用初始状态')
     return ''
   }
-  const ok = importSaveString(readFileSync(file, 'utf8').trim())
-  console.log(`  载入真实存档 ${file}:${ok ? '成功' : '失败(改用初始状态)'}`)
+  const path = fileName ? `saves/${file}` : file
+  if (!existsSync(path)) {
+    console.log(`  未找到指定存档 ${path},使用初始状态`)
+    return ''
+  }
+  const ok = importSaveString(readFileSync(path, 'utf8').trim())
+  console.log(`  载入真实存档 ${path}:${ok ? '成功' : '失败(改用初始状态)'}`)
   return ok ? file : ''
 }
 

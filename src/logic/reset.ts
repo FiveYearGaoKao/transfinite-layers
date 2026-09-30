@@ -12,7 +12,7 @@ import {
   getUnlockedNormalAchievementCount,
   hasAchievement,
 } from '@/access'
-import { isLayer0, isTempLayer } from '@/tools/ordinal'
+import { getLayerOrder, isLayer0, isTempLayer } from '@/tools/ordinal'
 import { canReset, resetGain } from '@/compute/prestige'
 import { hasUpgrade } from '@/compute/upgrades'
 import { hasInfinityUpgrade } from '@/compute/infinity'
@@ -20,7 +20,7 @@ import { hasLayerContent } from '@/compute/layerContent'
 import { dimensionCount } from '@/compute/metaDimension'
 import { addLog } from '@/data/log'
 import { checkResetAchievements } from './achievements'
-import { unlockNextLayer, wipeLayerScope } from './layerStructure'
+import { isWorldCapacityReached, unlockNextLayer, wipeLayerScope } from './layerStructure'
 import { clearFrameCache } from '@/compute/frameCache'
 
 /**重置选项 */
@@ -113,6 +113,8 @@ function doResetInner(
   forceClearUpgrades: boolean,
 ): LayerId | undefined {
   if (!forced && !canReset(layer)) return undefined
+  //世界容不下更多层级:解锁这个临时层不做任何事(连它引起的下层清空也不做);提示与成就在 app/uiActions 的点击路径里
+  if (isTempLayer(layer) && isWorldCapacityReached(layer)) return undefined
   if (isLayer0(layer)) return undefined
   const L = getLayer(layer)
   //是否结算收益(强制级联只负责清空下层)
@@ -137,7 +139,12 @@ function doResetInner(
   })
   doReset(prev, true, forceClearUpgrades)
   //临时层:转为真实层级(解锁下一个层级);视角是否切到新层级由调用方决定
-  return isTempLayer(layer) ? unlockNextLayer(layer) : undefined
+  if (!isTempLayer(layer)) return undefined
+  const newPos = unlockNextLayer(layer)
+  //进位(返回的层级阶更高)时立刻结算一次它的重置:设计口径是"点击那一下 = 解锁层级10 + 一次 [1,0] 重置",
+  //于是新阶层级到手就有第一个点数(由该阶公式按自然数顶层高度给出),整条自然数梯子也由这次重置清掉
+  if (getLayerOrder(newPos) > getLayerOrder(layer)) doReset(newPos)
+  return newPos
 }
 
 /**

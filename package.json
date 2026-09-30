@@ -24,7 +24,8 @@
     "check:meta": "node scripts/run-ts.mjs scripts/checkMetaDimension.ts",
     "check:commands": "node scripts/run-ts.mjs scripts/checkCommands.ts",
     "check:worldDepth": "node scripts/run-ts.mjs scripts/checkWorldDepth.ts",
-    "sim": "node scripts/run-ts.mjs scripts/sim.ts"
+    "sim": "node scripts/run-ts.mjs scripts/sim.ts",
+    "saveBank": "node scripts/run-ts.mjs scripts/saveBank.ts"
   },
   "dependencies": {
     "break_eternity.js": "^2.1.2",

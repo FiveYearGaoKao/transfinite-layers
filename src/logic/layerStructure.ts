@@ -4,6 +4,7 @@
 //- 键一律经 layerKey(规范化坐标)生成,保证同一槽位只有一种写法
 //- 临时层(-1)只是"将要解锁的最高层级"的预览:不参与生产、不提供加成、没有自动化配置
 //- 每帧的结构阶段先于生产阶段执行,保证一帧内层级结构稳定
+//- 世界加深(进位)不由结构阶段触发,而是"解锁最高阶窗口的下一个层级"这一步的结果(见 unlockNextLayer)
 import Decimal from 'break_eternity.js'
 import { player } from '@/data/player'
 import { temp } from '@/data/temp'
@@ -24,6 +25,7 @@ import {
   getLayerIndex,
   getLayerOrder,
   isLayer0,
+  isTempLayer,
   layerKey,
   nextLayer,
   pinnedSlotCount,
@@ -32,42 +34,11 @@ import {
 
 //------结构阶段------
 /**
- * 一帧的结构阶段:先尝试加深世界,再同步全部临时层
+ * 一帧的结构阶段:同步全部临时层
  * 临时层只更新高度(窗口内最高真实层级高度+1)或按需创建,不参与生产/加成/自动化
  */
 export function syncLayerStructure() {
-  promoteWorldDepth()
   syncTempLayers([0], player.layerDepth - 1)
-}
-
-/**本会话是否已提示过"世界深度已到上限(下一阶内容未定义)" */
-let worldDepthNoticeShown = false
-
-/**
- * 尝试加深世界(坐标的最大长度+1,即允许出现更高一阶的层级)
- * 条件:最深那个阶(阶 = layerDepth-1)的窗口顶端层级高度达到序数进制(该位进位,如0阶的"层级10"),
- *       **且下一阶的内容已在 compute/layerContent 中定义**(hasLayerContent(layerDepth))
- * 内容未定义时什么都不做(只提示一次):这样不会出现"点了没反应的死层级",也保证 I1(坐标长度 ≤ layerDepth)恒成立
- * 注:提升不改变已有键(坐标是绝对编号),故不涉及键迁移;更深一阶的临时层由本帧紧随其后的结构阶段建立
- * @returns 是否加深了世界
- */
-export function promoteWorldDepth(): boolean {
-  const order = player.layerDepth - 1
-  //该阶窗口的顶端层级(0号槽位是层级0,故只有它时说明这一阶还没有层级)
-  const top = highestActiveLayer([0], order)
-  if (getLayerOrder(top) != order) return false
-  const L = getLayer(top)
-  if (!L || L.level.lt(player.base)) return false
-  if (!hasLayerContent(player.layerDepth)) {
-    if (!worldDepthNoticeShown) {
-      worldDepthNoticeShown = true
-      addLog('progress', '你已到达当前版本终局，当前世界无法容纳更多层级')
-    }
-    return false
-  }
-  player.layerDepth += 1
-  addLog('progress', `世界加深了:层级编号现在最多可以有${player.layerDepth}位`)
-  return true
 }
 
 /**递归同步各阶窗口的临时层 */
@@ -142,15 +113,36 @@ function moveAutomation(fromKey: string, toKey: string) {
   delete player.automations[fromKey]
 }
 
+/**窗口是否已满(0~base-1 号槽位都有真实层级):满则再解锁下一个层级要么进位、要么轮转 */
+function isWindowFull(pos: LayerId, n: number): boolean {
+  return getLayerIndex(highestActiveLayer(pos, n), n) >= player.base - 1
+}
+
+/**
+ * 该临时层是否被"世界容不下更多层级"挡住(0阶窗口已满、且1阶内容未定义;1阶内容未定义只可能出现在 layerDepth=1)
+ * 只对临时层成立(真实层级的重置与容量无关):命中时解锁**不做任何事**(连它引起的下层清空也不做),
+ * 提示与成就在调用处(app/uiActions 的点击路径),logic 侧由 logic/reset.ts 的守卫兜住
+ * 之所以拒绝而不是照常轮转:轮转会造出高度 ≥ base 的0阶层级(如 base=10 时的层级10),
+ * 而那个高度在序数里已经没有自己的位置(它本该由进位变成 ω),见 docs/面向开发者/层级系统.md §六
+ * 注:更高阶窗口(1阶及以上)满且下一阶内容未定义时**不**拒绝,照常轮转(那时玩家已经见过进位)
+ */
+export function isWorldCapacityReached(tempPos: LayerId): boolean {
+  if (!isTempLayer(tempPos) || getLayerOrder(tempPos) != 0 || hasLayerContent(1)) return false
+  return isWindowFull(tempPos, 0)
+}
+
 /**
  * 解锁下一个层级:把临时层转为真实层级并重建临时层
  * 窗口未满:新层级直接占用下一个槽位
- * 窗口已满:底部pinnedSlotCount个槽位固定,顶部槽位整体下移一格(最低的那个被淘汰)
+ * 窗口已满:底部pinnedSlotCount个槽位固定,顶部槽位整体下移一格(最低的那个被淘汰);
+ *   **若这是最高阶窗口且下一阶内容已定义,轮转之后立刻进位**(`layerDepth += 1` + 开出新阶窗口的基础层级,
+ *   0 阶窗口满 ⇒ 先得到层级10、再开出 [1,0]=ω);新阶层级的第一次重置由 logic/reset.ts 紧接着做
+ * 0阶窗口已满且1阶内容未定义:世界容不下更多层级,不做任何变化(见 isWorldCapacityReached)
  * 自动化配置跟随层级对象搬移(临时层的配置转给新层级;新临时层按全局配置重建)
  * 阶内容未定义时拒绝解锁,避免高阶层级静默套用低阶公式
  * 注:本模块只负责结构变更,**不改视角**;需要跟随到新层级时由调用方(如手动重置)拿返回值自行切换
  * @param tempPos 临时层坐标
- * @returns 新层级坐标;未解锁时返回原临时层坐标
+ * @returns 新层级坐标(进位时是新阶窗口的基础层级);未解锁时返回原临时层坐标
  */
 export function unlockNextLayer(tempPos: LayerId): LayerId {
   const L = getLayer(tempPos)
@@ -164,11 +156,16 @@ export function unlockNextLayer(tempPos: LayerId): LayerId {
   const posh = highestActiveLayer(tempPos, n)
   const idx = getLayerIndex(posh, n)
   let realPos: LayerId
+  /**本次解锁是否要连带进位 */
+  let carry = false
   if (idx < player.base - 1) {
     //窗口未满:新层级接在同一窗口的下一个槽位(同阶,故用nextLayer(posh, n))
     realPos = nextLayer(posh, n)
     player.layers[layerKey(realPos)] = L
     moveAutomation(tempKey, layerKey(realPos))
+  } else if (isWorldCapacityReached(tempPos)) {
+    //世界容不下更多层级:结构不做任何变化
+    return tempPos
   } else {
     //窗口已满:顶部槽位整体下移一格,新层级进入最高槽位
     for (let i = pinnedSlotCount(player.base); i < player.base - 1; i++) {
@@ -184,10 +181,20 @@ export function unlockNextLayer(tempPos: LayerId): LayerId {
     realPos = posh.slice()
     player.layers[layerKey(realPos)] = L
     moveAutomation(tempKey, layerKey(realPos))
+    //最高阶窗口满且下一阶内容已定义 ⇒ 轮转之后进位
+    carry = n == player.layerDepth - 1 && hasLayerContent(n + 1)
   }
   //重建临时层(预览下一层):其高度为新顶层高度+1,无需等下一次结构阶段校正
   temp.tempLayers[tempKey] = initializeLayer(L.level.add(1), false, dimensionCount())
   invalidateLayerOrder()
+  if (carry) {
+    //进位:加深世界(新阶窗口随之出现),再开出新阶窗口的基础层级(0阶窗口满 ⇒ 先得到层级10、再开出 [1,0]=ω)
+    //新阶层级的第一次重置由 logic/reset.ts 紧接着做(见那里的说明)
+    player.layerDepth += 1
+    syncLayerStructure()
+    realPos = unlockNextLayer(shiftLayer(tempPos, n + 1, -1))
+    invalidateLayerOrder()
+  }
   return realPos
 }
 

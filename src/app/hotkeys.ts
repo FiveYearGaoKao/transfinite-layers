@@ -12,8 +12,8 @@ import { doLoad, doSave } from '@/app/saveActions'
 import { cycleBoost, infinityResetConfirm, resetLayerConfirm } from '@/app/uiActions'
 import { cycleCurrentSubtab, cycleLayer, mainTabsList } from '@/app/navigation'
 import { focusCommandInput } from '@/app/commandFocus'
-import { DIMENSION_COUNT } from '@/data/constants'
 import { pause } from './core'
+import { dimensionCount, META_DIMENSION_MAX_COUNT } from '@/compute/metaDimension'
 
 /**快捷键注册表条目:同一份定义同时用于按键分发与"选项→快捷键"页显示 */
 export interface HotkeyDef {
@@ -78,18 +78,18 @@ export const HOTKEYS: HotkeyDef[] = [
   //数字键1~n:仅层级页内购买本层对应维度(用e.code按物理键位判断,与键盘布局无关;Shift+数字已废除)
   {
     id: 'buy-dim',
-    keys: `1~${DIMENSION_COUNT}`,
+    keys: `1~${META_DIMENSION_MAX_COUNT}`,
     desc: '层级页内购买本层对应维度',
     isPressed: (e) => {
       if (player.mainTab != 'layers') return false
       if (e.shiftKey || hasSysMod(e)) return false
       const idx = digitIndex(e)
-      return idx >= 0 && idx < DIMENSION_COUNT
+      return idx >= 0 && idx < dimensionCount()
     },
     run: (e) => {
       e.preventDefault()
       const idx = digitIndex(e)
-      if (idx < 0 || idx >= DIMENSION_COUNT) return
+      if (idx < 0 || idx >= dimensionCount()) return
       //解锁"最大购买"且"购买模式:买最大"时数字键也买最大
       if (hasKnowledge('max-buy') && settings.buyMax) buyDimensionMax(player.layerSubtab, idx)
       else buyDimension(player.layerSubtab, idx)

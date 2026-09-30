@@ -35,6 +35,7 @@ Strict unidirectional dependency: `tools → data → save/access → compute �
 Full architecture & effect mechanism docs: `docs/面向开发者/` (架构.md, 层级系统.md, effect机制.md, 数值.md, 性能.md, 存档.md, 开发规范.md). Player-facing guide: `docs/面向玩家/玩法指南.md`.
 
 ### Layers (read `docs/面向开发者/层级系统.md` first)
+
 - Coordinates (`LayerId`) are **slots only**, written in **canonical form**: no leading zero digits (all-zero = `[0]`), so coordinates do not depend on `player.layerDepth`. Build and look up keys with `layerKey()` (`tools/ordinal.ts`) — never hand-write `pos.toString()`, and never use a zero-padded coordinate like `[0,5]`. A layer's height lives in `Layer.level`. Layer relations go through `access/layerGraph.ts` (`prevLayer` / `levelGap` / `getOrderedLayers`) and `tools/ordinal.ts` (`nextLayer`): the **o-order bonus source of layer L is `nextLayer(L, o)`**. Never hand-roll coordinate arithmetic in other modules.
 - Iterate layers via `getOrderedLayers('asc' | 'desc')` / `forEachLayer`; production runs high→low, automation low→high. **Never** rely on `Object.keys(player.layers)` order (integer-like keys always enumerate first, so mixed keys cannot express height order).
 - A layer's **order** is the weight of its own slot digit (the lowest non-zero digit: `[5]` and `[1,5]` are both order 0, `[1,0]` is order 1), and a **window** is `(ancestor digits, order)` — never infer either from the coordinate's length.
@@ -45,6 +46,7 @@ Full architecture & effect mechanism docs: `docs/面向开发者/` (架构.md, �
 ## Gotchas
 
 ### Numbers
+
 - **All game numbers use `Decimal` from `break_eternity.js`** (representation, API, cost per op and the design ranges of constants: `docs/面向开发者/数值.md`). Never use plain JS `number` for player state, costs, or production; `number` is only for ids, indices, flags and small counts.
 - **One Decimal op costs on the order of 1 µs** — three orders of magnitude more than a `number` read/write. Avoid recomputing per frame: use a named slot plus its `scope` (see above) instead of doing the math inside formulas.
 - **Decimals are never mutated in place** — always replace the whole value (`player.x = player.x.add(y)`). For that reason `data/player.ts` marks `Decimal.prototype` with Vue's `__v_skip`, so Decimals never go through the reactive proxy (measured: about half the frame time; see 性能.md). Never call in-place mutators (`normalize()`, `fromComponents()`) or write `.mag` directly.
@@ -52,31 +54,38 @@ Full architecture & effect mechanism docs: `docs/面向开发者/` (架构.md, �
 - Decimals are NOT JSON-serializable. The save system uses `markDecimals` (→ `{$d: "...", $l: layer}`) / `unmarkDecimals` on save/load. Layer-0 Decimals are stored as the exact double string and rebuilt via `fromComponents_noNormalize` — the round-trip is bit-exact (break_eternity's `toString`/`fromString` loses ~1 ulp for `|mag| < 1`).
 
 ### Save system
+
 - Custom serialization in `save/save.ts`. Checksum (`save/checksum.ts`) is computed over the `markDecimals`-serialized result and verified on load for saves with `version >= CHECKSUM_VERSION` (older saves skip verification). It is an integrity check, not anti-cheat — the algorithm is public in source.
 - Missing fields in old saves fall back to `initializeSave()` defaults (blank-shape fill + `save/validate.ts` shape check), so adding a field normally needs no other change; `save/migration.ts` is only for data transforms (rename/recompute) that defaults cannot express.
 
 ### Type system
+
 - `vue-tsc` handles `.vue` type-checking; plain `tsc` will fail on `.vue` imports.
 - `@/` alias → `src/` (configured in both tsconfig and vite).
 
 ### Lint/format rules
+
 - **No semicolons**, **single quotes**, max line width 100 (Prettier).
 - Unused variables: prefix with `_` to suppress ESLint error.
 - `vue/multi-word-component-names` is off.
 
 ### Editing files
+
 - **Never rewrite a repo file through PowerShell** (`Get-Content … | Set-Content`, `… -replace … | Set-Content`, `Out-File`): Windows PowerShell 5.1 reads these files as ANSI, so every Chinese character comes back re-encoded as garbage and the file is silently destroyed. Shell one-liners are fine for read-only commands; to change a file inside the repo use the file tools (`read` / `edit` / `write`) only.
 
 ### UI conventions
+
 - Button classes come in pairs: **type** (sizing: `subTab`, `prestige`, `buyable`, `upgrade`, `mainTab`, `toggle`) + **state** (color: `selected`, `affordable`, `bought`, `toggle-on`, `toggle-off`, `meta`). All defined in `src/assets/style.css`.
 - Theme colors: use `var(--...)` CSS variables from `:root` / `body.light`. Add new themes by extending the theme cycle in `settings.ts` + adding the corresponding CSS variables.
 
 ### Code style
+
 - **Chinese JSDoc comments above every new function**.
 - **Registry pattern** for all game systems: define an array (`UPGRADES`, `BUYABLES`, `AUTOMATIONS`, achievements), register at module level, query via accessor functions.
 - **Pure functions with no save/effect dependencies go in `tools/`** (e.g. `softCapValue`); a pure helper with a single consumer may stay in its owning layer (e.g. the curve families in `compute/curves.ts`). Gameplay-aware wrappers (reading effect slots/player state) live in `compute/`.
 
 ## Verification (no test framework)
+
 Small single-file changes: `npm run type-check && npm run lint && npm run build`.
 Complex changes (pricing/curves, effects & frame cache, save format, achievements, layer structure) must also run the collision-check scripts. `npm run check` runs all of them; pick the matching one when that is enough (the "which change → which script" table is in `docs/面向开发者/开发规范.md` §二.13):
 
@@ -88,9 +97,9 @@ npm run check:save          # export→import round-trip, checksum tampering, sh
 npm run check:achievements   # trigger buckets, manual achievements have an unlock site in src/
 npm run check:meta           # meta-dimension boost formulas, dimension-count growth, forced reset, save round-trip
 npm run check:commands        # quiz cooldown/storage, offline-time cap, new save fields round-trip
-npm run check:worldDepth      # layerDepth promotion gate, [1,0] unlock path, coordinate≠height semantics
+npm run check:worldDepth      # frontier-window rules (carry / refusal / rotation), [1,0] unlock path, coordinate≠height semantics
 ```
 
-Balance/progression changes: `node scripts/run-ts.mjs scripts/sim.ts [minutes] [stepSeconds] [printEvery] [--bot=phased|greedy|none] [--fresh] [--max-step=seconds]` runs the real `gameLoop` headlessly (it loads the real save if one is present) and prints a progress timeline plus metric snapshots. `--bot=phased` (the default for balance runs) adds a scripted player (`scripts/bot.ts`) that acts only through the same `logic/` entry points the UI buttons use — no debug commands, no direct state writes — with a phase machine for the opening (`--opening=invest|fast`), the layer-2 gate (`--next-gain=N`, i.e. a24 + N points of the layer below) and the a24 side quest (`--no-a24` to disable); `--bot=greedy` is the branch-free lower bound. Use `--max-step=1` for strategy comparisons: otherwise the bot is throttled to one action per 60 game seconds when idle. Report before/after runs instead of a guess; endgame criteria, the metric table, the deliberate-achievement list and the measured opening comparison: `docs/面向开发者/测试与平衡.md` §五.
+Balance/progression changes: `node scripts/run-ts.mjs scripts/sim.ts [minutes] [stepSeconds] [printEvery] [--bot=phased|greedy|none] [--fresh] [--save=baselineFile] [--max-step=seconds]` runs the real `gameLoop` headlessly (it loads the real save if one is present) and prints a progress timeline plus metric snapshots. `--bot=phased` (the default for balance runs) adds a scripted player (`scripts/bot.ts`) that acts only through the same `logic/` entry points the UI buttons use — no debug commands, no direct state writes — with a phase machine for the opening (`--opening=invest|fast`), the layer-2 gate (`--next-gain=N`, i.e. a24 + N points of the layer below) and the a24 side quest (`--no-a24` to disable); `--bot=greedy` is the branch-free lower bound. Use `--max-step=1` for strategy comparisons: otherwise the bot is throttled to one action per 60 game seconds when idle. Report before/after runs instead of a guess; endgame criteria, the metric table, the deliberate-achievement list and the measured opening comparison: `docs/面向开发者/测试与平衡.md` §五. Runs meant to be compared start from a **baseline save** in `saves/` (`npm run saveBank` regenerates them, `--save=<file>` starts a run from one; stages, naming and import steps: `saves/README.md`).
 
 Scripts are excluded from the build but included in `npm run type-check` (own project: `tsconfig.scripts.json`); shared assertions/bootstrap/fixtures live in `scripts/helpers.ts`, and one-off probes must not be left behind.

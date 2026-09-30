@@ -791,6 +791,10 @@ export interface SimOptions {
   policy?: BotPolicy
   /**是否无视真实存档、从空白档开始 */
   fresh?: boolean
+  /**起点存档: saves/ 目录下的基准档文件名(缺省用仓库根目录下的玩家存档,见 saves/README.md) */
+  saveFile?: string
+  /**每步回调(基准存档银行用它在阶段节点导出存档) */
+  onStep?: (elapsed: Decimal) => void
   /**是否在每行指标快照后附上各层级状态(诊断用) */
   verbose?: boolean
   /**进度事件回调(解锁层级/无限重置/挑战完成) */
@@ -818,7 +822,7 @@ export function runSim(opts: SimOptions): SimResult {
     freshSave()
     console.log('  从空白档开始(fresh)')
   } else {
-    loadRealSave()
+    loadRealSave(opts.saveFile)
   }
   const policy = opts.policy ?? nonePolicy()
   const maxDt = Math.max(opts.dt, opts.maxDt)
@@ -848,6 +852,7 @@ export function runSim(opts: SimOptions): SimResult {
     frames++
     policy.setTime?.(elapsed())
     const acted = policy.act()
+    opts.onStep?.(elapsed())
     //策略要求小步长(如抓"1游戏秒内"的成就窗口)时一直用它,否则按"有动作=基础步长,没动作=逐步放大"
     const requested = policy.stepDt?.()
     dt = requested != undefined ? requested : acted ? opts.dt : Math.min(maxDt, dt * 2)

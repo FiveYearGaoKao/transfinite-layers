@@ -394,11 +394,36 @@ const activeLayers = computed(() =>
         >这是测试版:新增内容尚未平衡、终局未确定,且与正式版不共用存档。</span
       >
       <div class="section box left">
-        <span class="text bold">版本终局(v0.1.0)</span>
-        <span class="text">目标: 层级0点数达到 1.79e308,解锁"无限"。</span>
-        <span class="text">推荐进度: C1~C4 完成次数 10 / 10 / 1 / 1。</span>
-        <span class="text">成就: 除 a44"永无止境"(获得层级4点数)外的其他 31 个普通成就。</span>
+        <span class="text bold">版本终局(v0.2.0)</span>
+        <span class="text">目标: 获得1e4层级9点数,尝试解锁层级10,层级0点数达到 e11000。</span>
+        <span class="text"
+          >推荐进度: 56 个普通成就、5~6 次元维度提升、无限挑战完成数 30 / 6 / 10 / 1 / 12。</span
+        >
+        <span class="text"
+          >0阶窗口被填满后再解锁下一个层级会被拒绝,层级10以上的内容(序数层)将于后续版本解锁.</span
+        >
         <span class="text">其它内容见"更新记录"页。</span>
+      </div>
+      <div class="section box left">
+        <span class="text bold">关于</span>
+        <span class="text"
+          >本作使用
+          <a href="https://github.com/Patashu/break_eternity.js" target="_blank" rel="noopener"
+            >break_eternity.js</a
+          >
+          储存大数。</span
+        >
+        <span class="text">核心机制来源: Antimatter Dimensions、Synergism、Omega Layers。</span>
+        <span class="text"
+          >策划:
+          <a href="https://fiveyeargaokao.github.io/" target="_blank" rel="noopener"
+            >FiveYearGaoKao</a
+          ></span
+        >
+        <span class="text">程序: DeepSeek (注: 本项目程序大部分由 AI 生成)</span>
+        <span class="text"
+          >特别鸣谢(提供建议,排名不分先后): seanxlx、独特雪花、0100000000a7、静火Ω</span
+        >
       </div>
       <div class="section box left">
         <span class="text bold">如何游玩</span>
@@ -477,6 +502,16 @@ const activeLayers = computed(() =>
             }}</span
           >
         </div>
+        <div v-if="hasAchievement('a48')" class="section box left">
+          <span class="text bold">无限</span>
+          <span class="text">本次无限经历时间: {{ formatTime(player.infinityRunTime) }}</span>
+          <span class="text">无限重置最短时间: {{ formatTime(player.infinityBestResetTime) }}</span>
+          <span class="text">总无限点数: {{ format(player.totalInfinityPoints) }}</span>
+          <span class="text">最佳无限点数/秒: {{ format(player.infinityBestRate) }}</span>
+          <span v-if="hasInfinityMilestone('im100')" class="text">
+            被动无限点数/秒: {{ format(infinityPassiveRate()) }}
+          </span>
+        </div>
         <div class="section box left">
           <span class="text bold">层级资源</span>
           <div v-for="l in activeLayers" :key="l.key" class="layerStats">
@@ -497,16 +532,6 @@ const activeLayers = computed(() =>
       </div>
 
       <div v-else id="resetRecords" class="section">
-        <div v-if="hasAchievement('a48')" class="section box left">
-          <span class="text bold">无限</span>
-          <span class="text">本次无限经历时间: {{ formatTime(player.infinityRunTime) }}</span>
-          <span class="text">无限重置最短时间: {{ formatTime(player.infinityBestResetTime) }}</span>
-          <span class="text">总无限点数: {{ format(player.totalInfinityPoints) }}</span>
-          <span class="text">最佳无限点数/秒: {{ format(player.infinityBestRate) }}</span>
-          <span v-if="hasInfinityMilestone('im100')" class="text">
-            被动无限点数/秒: {{ format(infinityPassiveRate()) }}
-          </span>
-        </div>
         <div class="section box left">
           <span class="text bold">最近10次无限重置(新→旧)</span>
           <span v-if="player.infinityResetLog.length == 0" class="text">暂无记录</span>

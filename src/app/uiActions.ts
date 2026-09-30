@@ -13,6 +13,9 @@ import {
   META_DIMENSION_MAX_COUNT,
 } from '@/compute/metaDimension'
 import { doReset, resetRunWithoutGain } from '@/logic/reset'
+import { isWorldCapacityReached } from '@/logic/layerStructure'
+import { unlockAchievementById } from '@/logic/achievements'
+import { addLog } from '@/data/log'
 import { doInfinityReset } from '@/logic/infinity'
 import { doMetaDimensionBoost } from '@/logic/metaDimension'
 import { openConfirm } from '@/app/dialog'
@@ -22,6 +25,12 @@ import { getBoostPresets } from '@/compute/knowledge'
 /**重置当前所选层级(带设置里的二次确认,与层级页按钮同一流程) */
 export async function resetLayerConfirm() {
   const pos = player.layerSubtab
+  //世界容不下更多层级:这次重置整个不做(与doReset里的守卫一致,故不弹确认框),只提示并把"试过了"记进成就
+  if (isWorldCapacityReached(pos)) {
+    addLog('warning', '你已到达版本终局,当前世界无法容纳更多层级')
+    unlockAchievementById('a78')
+    return
+  }
   const confirmed =
     !settings.resetConfirm ||
     (await openConfirm({

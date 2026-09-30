@@ -1,5 +1,6 @@
 //剧情(随游戏进度解锁)
-//注意:本文本仅提供章节骨架与占位概述,具体文学文本由策划撰写(不采用AI生成的完整剧情)
+//注意:本文本仅提供章节骨架与占位概述,具体文学文本由策划撰写(不采用AI生成的完整剧情);
+//世界观事实、术语对照与分镜参考稿见 docs/面向开发者/剧情大纲.md
 import { player } from '@/data/player'
 
 export interface StoryChapter {
@@ -24,9 +25,10 @@ export const STORY: StoryChapter[] = [
     isUnlocked: () => player.achievements.includes('a48'),
   },
   {
+    //v0.3.0:进位动画与本章正文一起实装(layerDepth 只在"最高阶窗口满时点解锁"这一步进位后才会≥2)
     id: 'omega',
     title: '进位',
-    text: '(文本待策划填充)你到达了层级10——十层折叠成一个新的数字 ω。世界深度到此为止:ω 之后的内容,留给未来的旅程。',
-    isUnlocked: () => player.achievements.includes('a78'),
+    text: '(文本待策划填充)层级0~9 填满了整个世界。再往上是 ω:自然数层级(层级10、层级11…)可以一直延长下去,而 ω 的重置会把它们全部抹掉。',
+    isUnlocked: () => player.layerDepth >= 2,
   },
 ]

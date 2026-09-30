@@ -13,6 +13,7 @@
 //  --a35      做a35支线(层级2之后把层级1的重置门槛抬到1e4,抓"层级1第1次重置")
 //  --hunt-dt=秒 a24窗口内的步长(游戏秒,缺省1/60)
 //  --fresh    无视真实存档,从空白档开始
+//  --save=文件名 从 saves/ 目录下的基准存档开始(见 saves/README.md);与--fresh互斥
 //  --max-step 无动作时步长放大的上限(缺省60;等于步长即固定步长)
 //  --no-challenges 机器人不主动进挑战(从真实存档继续做实验时用:进挑战会强制重置甚至无限重置)
 //  --unlock-gate=点数 解锁新层级所需的最低层级0点数(缺省1e100=先拿到a28与挑战;填1=一够条件就解锁)
@@ -93,6 +94,7 @@ function makePolicy(): BotPolicy {
 console.log('=== 平衡模拟 ===')
 console.log(
   `  策略 ${bot}${bot == 'phased' ? `(${opening},开局收益${openGain > 0 ? openGain : PHASED_DEFAULTS.openGain})` : ''},` +
+    `起点 ${has('fresh') ? '空白档' : (flag('save') ?? '玩家存档')},` +
     `基础步长 ${step} 秒,共 ${minutes} 分钟游戏时间,每 ${every} 秒打印一行`,
 )
 const result = runSim({
@@ -101,6 +103,7 @@ const result = runSim({
   maxDt: bot == 'none' ? step : maxStep,
   every,
   fresh: has('fresh'),
+  saveFile: flag('save'),
   verbose: has('verbose'),
   policy: makePolicy(),
   onEvent: (text) => console.log(`  ${text}`),

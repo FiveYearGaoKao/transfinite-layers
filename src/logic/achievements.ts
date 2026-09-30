@@ -611,10 +611,9 @@ const normalAchievements: AchievementDef[] = [
   {
     id: 'a78',
     name: '十全十美',
-    description: '解锁层级10...吗?',
+    description: '尝试解锁层级10(当前世界无法容纳更多层级)',
     reward: 200,
-    trigger: 'reset',
-    isCompleted: (ev) => gotLayerPoints(ev, [10]),
+    trigger: 'manual',
   },
 ]
 
