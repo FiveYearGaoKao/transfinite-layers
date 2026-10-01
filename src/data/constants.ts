@@ -2,7 +2,7 @@
 /**游戏名称 */
 export const gameName: string = 'TransfiniteLayers'
 /**当前版本号 */
-export const gameVersion: string = 'v0.2.0'
+export const gameVersion: string = 'v0.2.1'
 /**是否为测试版构建(`vite build --mode beta`;测试版是未平衡/未定终局的新内容) */
 export const isBeta: boolean = import.meta.env.VITE_BETA == 'true'
 /**localStorage键前缀(测试版带后缀,故测试版与正式版的存档、设置互不相通) */

@@ -75,7 +75,8 @@ export function reportChecks(): boolean {
 /**
  * 载入真实存档(未找到或载入失败时保持当前状态)
  * 真实存档能让断言覆盖到只在后期才生效的分支
- * @param fileName 指定基准存档的文件名(在 saves/ 目录下,见 saves/README.md);不填则取仓库根目录下的玩家存档
+ * @param fileName 指定基准存档:含路径分隔符或 .txt 后缀时按"仓库相对路径"处理(扫参节点档用),
+ *                 否则按 saves/ 目录下的文件名处理(见 saves/README.md);不填则取仓库根目录下的玩家存档
  * @returns 实际载入的文件名(未载入为空串)
  */
 export function loadRealSave(fileName?: string): string {
@@ -86,7 +87,12 @@ export function loadRealSave(fileName?: string): string {
     console.log('  未找到真实存档,使用初始状态')
     return ''
   }
-  const path = fileName ? `saves/${file}` : file
+  //带路径分隔符或后缀的按仓库相对路径直接读;否则按 saves/ 下的基准档名
+  const path = fileName
+    ? fileName.includes('/') || fileName.includes('\\') || fileName.endsWith('.txt')
+      ? file
+      : `saves/${file}`
+    : file
   if (!existsSync(path)) {
     console.log(`  未找到指定存档 ${path},使用初始状态`)
     return ''

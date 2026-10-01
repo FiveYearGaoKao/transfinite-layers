@@ -18,6 +18,7 @@ import {
   getPoints,
   hasAchievement,
   normalChallengeCompletions,
+  prevLayer,
 } from '@/access'
 import { format, formatTime, formatWhole } from '@/tools/format'
 import { compareLayer, getLayerOrder, isLayer0 } from '@/tools/ordinal'
@@ -72,7 +73,6 @@ import {
 } from '@/logic/challenges'
 import { applyTimeResources, gameLoop } from '@/app/core'
 import { freshSave, loadRealSave } from './helpers'
-
 /**机器人策略:每步调用一次act;返回true表示这一步做了动作(自适应步长据此保持小步长) */
 export interface BotPolicy {
   name: string
@@ -154,6 +154,11 @@ export interface GreedyOptions {
   challengePrepareEnergy: number
   /**是否主动进挑战:进挑战会强制重置(无限挑战更是直接无限重置),从真实存档继续做实验时可关掉 */
   challenges: boolean
+  /**
+   * 挑战内也允许做层级重置:挑战的强制重置"不动目标层自身",目标层的维度链留下来,
+   * 靠它重新买出下层维度、再把目标资源做上去(c1的目标是层级1点数,只能靠层级0点数换)
+   */
+  challengeResetInside: boolean
   /**解锁新层级的最低层级0点数:解锁会擦掉本层以下的所有进度,太早解锁等于把刚攒的势头扔掉(0=够条件就解锁) */
   unlockGate: number
   /**每步购买知识升级的级数(1更接近真人:攒够了才买一级) */
@@ -174,6 +179,187 @@ export interface GreedyOptions {
   knowledgeToTime: number
   /**留给"加速"的离线时间储备(秒),超出的部分转成加速时间(需"时间存储") */
   boostReserve: number
+  /*
+   * 以下三项是"重置规则引擎"的入口(见文件上方的ResetRuleConfig):
+   * rules有配置时该层按规则判、没配置时退回通用贪心规则(resetMult/resetTime);rules为空则与旧行为完全一致
+   */
+  /**按层(规范化坐标的字符串形式)声明的重置规则,如 {"2":{point:1e4}} */
+  rules?: Record<string, LayerRuleConfig>
+  /**未在rules里指定的层级用的重置规则 */
+  defaultRule?: LayerRuleConfig
+  /**规则集(直接给一个RuleSet时优先于rules/defaultRule) */
+  ruleSet?: RuleSet
+  /**
+   * 某层**首次**重置(bestPoints=0)要求的最低收益(0=沿用旧行为:够canReset就重置)
+   * 修的是"空层立刻重置"死锁:某层被上层级联清空后收益只剩1,重置一次把bestPoints写成1,
+   * 通用贪心规则要求"收益≥bestPoints×resetMult"便再也不成立 → 该层永远停在1点、买不出维度链;
+   * 抬一个门槛就能让它先攒够点数再重置(见docs/面向开发者/测试与平衡.md)
+   */
+  minGain?: number
+  /**阶段式策略的阶段名(规则按阶段取;贪心策略恒为progress) */
+  phase?: () => BotPhase
+  /**
+   * 每次层级重置打一行诊断(层级/收益/距上次/本层点数与维度/收益基准)
+   * 诊断"某层为什么不动"时开它:能直接看出"重置太频繁"还是"重置间隔在拉长"
+   */
+  resetLog?: (text: string) => void
+}
+
+//------重置规则引擎(机器人自选的"自动重置"参数)------
+//机器人自己的重置判据按"规则"声明,与游戏的自动重置四条件(时间/点数/倍率/幂次)一一对应,
+//只是把"倍率/幂次"的作用对象从"当前点数"换成了"历史最佳收益"(理由见测试与平衡.md §5.1):
+//  倍率:本次收益 ≥ 本层历史最佳收益 × mult
+//  幂次:本次收益 ≥ 本层历史最佳收益 ^ power
+//  点数:本次收益 ≥ point(绝对点数)
+//  时间:距上次重置 ≥ time(秒)
+//这四条件有两个用途:(1)机器人动作的判据;(2)扫参脚本据此输出"较优参数"(可直接写进游戏自动化)
+/**重置规则:四个条件都可选,combine决定任一满足还是全部满足 */
+export interface ResetRuleConfig {
+  combine?: 'any' | 'all'
+  time?: number
+  point?: number
+  mult?: number
+  power?: number
+  /**
+   * 三条件的基数(缺省best=本层历史最佳收益):
+   *  best=机器人记录的最佳收益;current=当前点数(point用);both=两者都试(任一成立即成立)
+   */
+  resource?: 'best' | 'current' | 'both'
+  /**停滞放宽:距上次重置(或上次收益刷新)超过该秒数且本次收益 ≥ 上次收益时就重置 */
+  yieldAfter?: number
+  /**
+   * 该层**首次**重置(bestPoints=0)要求的最低收益(缺省沿用GreedyOptions.minGain)
+   * Infinity=这层永远不做首次重置(让它先攒点数,别被自己的重置级联清掉)
+   */
+  minGain?: number
+}
+
+/**归一化后的重置规则(缺省值已填,字段为Decimal/Infinity) */
+export interface ResetRule {
+  combine: 'any' | 'all'
+  time: Decimal
+  point: Decimal
+  mult: Decimal
+  power: Decimal
+  resource: 'best' | 'current' | 'both'
+  yieldAfter: number
+  /**首次重置的最低收益(Infinity=永不首次重置) */
+  minGain: number
+}
+
+/**阶段:层级1之前 / 层级1开局(前两次重置) / 正常推进;阶段名同时用于配置查找与指标表 */
+export type BotPhase = 'layer0' | 'layer1Open' | 'progress'
+
+/**某层的重置规则:基础规则+按阶段覆盖(阶段名→部分规则);写 null 表示"该层不配规则"(沿用通用贪心规则) */
+export type LayerRuleConfig =
+  | (ResetRuleConfig & {
+      /**按阶段覆盖:如 {layer1Open:{mult:1}} 表示开局阶段层级1改用倍率1 */
+      phases?: Partial<Record<BotPhase, ResetRuleConfig>>
+      /**无限重置的最低收益(IP);不填则用GreedyOptions.infinityGain */
+      infinity?: { gain?: number }
+    })
+  | null
+
+/**重置规则的全局参数集(扫参脚本与--reset-config读同一份;字段含义见GreedyOptions) */
+export interface BotRuleConfig {
+  /**未在rules里指定的层级用它 */
+  default?: LayerRuleConfig
+  /**按层级高度(规范化坐标的字符串形式)指定的规则,如 {"1":{mult:2},"2":{point:1e4}} */
+  rules?: Record<string, LayerRuleConfig>
+  /**阶段阈值 */
+  phases?: {
+    /**层级1开局阶段的结束条件:层级1重置次数达到该值即进入progress;null=只由nextLayerAt结束 */
+    layer1OpenResets?: number | null
+    /**出现该层级数(含层级0)后进入progress;null=从不用层级数结束开局阶段 */
+    nextLayerAt?: number | null
+  }
+}
+
+/**归一化一个规则(补缺省、夹取非法值) */
+function normalizeRule(cfg: ResetRuleConfig | undefined, base: ResetRule): ResetRule {
+  if (!cfg) return base
+  const num = (v: number | undefined, d: number, min: number) =>
+    v == undefined || !isFinite(v) || v < min ? d : v
+  return {
+    combine: cfg.combine == 'all' ? 'all' : 'any',
+    time: new Decimal(num(cfg.time, base.time.toNumber(), 0)),
+    point: new Decimal(num(cfg.point, base.point.toNumber(), 0)),
+    mult: new Decimal(num(cfg.mult, base.mult.toNumber(), 1)),
+    power: new Decimal(num(cfg.power, base.power.toNumber(), 1)),
+    resource: cfg.resource ?? base.resource,
+    yieldAfter: num(cfg.yieldAfter, base.yieldAfter, 0),
+    minGain: cfg.minGain ?? base.minGain,
+  }
+}
+
+/**规则是否完全没启用任何条件(全为0/1=不生效) */
+function ruleInert(r: ResetRule): boolean {
+  return (
+    r.time.toNumber() <= 0 &&
+    r.point.toNumber() <= 0 &&
+    r.mult.toNumber() <= 1 &&
+    r.power.toNumber() <= 1 &&
+    !(r.yieldAfter > 0)
+  )
+}
+
+/**重置规则集的基准规则(所有缺省都落到它) */
+const BASE_RULE: ResetRule = {
+  combine: 'any',
+  time: new Decimal(0),
+  point: new Decimal(0),
+  mult: new Decimal(0),
+  power: new Decimal(0),
+  resource: 'best',
+  yieldAfter: 0,
+  minGain: 0,
+}
+
+/**阶段名列表(查找顺序即阶段推进顺序) */
+const BOT_PHASES: BotPhase[] = ['layer0', 'layer1Open', 'progress']
+
+/**重置规则集:把"默认规则+按层规则+按阶段覆盖"展开成"阶段→层→规则"的查表 */
+export class RuleSet {
+  /**阶段→(层坐标字符串→规则),按需构建并缓存 */
+  private table: Partial<Record<BotPhase, Map<string, ResetRule>>> = {}
+  /**原始配置(便于脚本打印与复现) */
+  readonly config: BotRuleConfig
+  constructor(config: BotRuleConfig = {}) {
+    this.config = config
+  }
+  /**构建某阶段的查找表 */
+  private build(phase: BotPhase): Map<string, ResetRule> {
+    const cached = this.table[phase]
+    if (cached) return cached
+    const map = new Map<string, ResetRule>()
+    for (const [key, cfg] of Object.entries(this.config.rules ?? {})) {
+      //默认规则作底、按层规则覆盖、再按阶段覆盖(阶段覆盖优先级最高)
+      //注:JSON里写 null 即"该层不配规则"(ruleInert会把它当作不生效),这里按空对象处理
+      const c = cfg ?? {}
+      const perPhase = { ...(this.config.default ?? {}), ...c, ...c.phases?.[phase] }
+      const rule = normalizeRule(perPhase, BASE_RULE)
+      map.set(key, rule)
+    }
+    this.table[phase] = map
+    return map
+  }
+  /**取某阶段某层的规则;未配置或四个条件都没启用时返回undefined(表示"不重置") */
+  get(phase: BotPhase, pos: LayerId): ResetRule | undefined {
+    const r = this.build(phase).get(pos.toString())
+    if (!r) return undefined
+    return ruleInert(r) ? undefined : r
+  }
+  /**某个层级是否在任何阶段配置了规则(用于诊断输出) */
+  hasLayer(pos: LayerId): boolean {
+    return BOT_PHASES.some((p) => this.build(p).has(pos.toString()))
+  }
+  /**阶段阈值(缺省:层级1前两次重置后进入progress) */
+  get gates(): { layer1OpenResets: number | null; nextLayerAt: number | null } {
+    return {
+      layer1OpenResets: this.config.phases?.layer1OpenResets ?? 2,
+      nextLayerAt: this.config.phases?.nextLayerAt ?? null,
+    }
+  }
 }
 
 /**贪心策略默认参数 */
@@ -188,6 +374,7 @@ export const GREEDY_DEFAULTS: GreedyOptions = {
   challengePrepareDim: 2,
   challengePrepareEnergy: 1e16,
   challenges: true,
+  challengeResetInside: false,
   //1e100是成就a28(Googol)的阈值,也是挑战页的解锁条件:先拿到挑战再解锁更高层级,否则会把势头擦掉
   unlockGate: 1e100,
   buyPerStep: 1,
@@ -197,26 +384,38 @@ export const GREEDY_DEFAULTS: GreedyOptions = {
   boostReserve: 3600,
 }
 
-/**贪心策略的知识升级优先顺序:先提高知识收入,再买永久产出,最后QoL与时间类 */
+/**
+ * 贪心策略的知识升级优先顺序
+ * 口径:"先解锁知识来源,再买永久产出乘数,最后QoL与时间类"。知识总量有限(签到按自然日、答题按冷却),
+ * 所以先把"每一级都很便宜且直接乘产出"的买掉,再谈其它:
+ * - 指令系统/答题=唯一的长期知识来源,先开
+ * - 生产增效(所有维度乘数,单级+10%,价格5+5n)/成就之力(1.05^已解锁成就数)=最便宜的全局乘数
+ * - 知识/成就知识=知识收入自身的乘数(先有量再谈倍率)
+ * - 深度加成(层级高度差加成)/无限点数加成=中后期主力
+ * - 自动批量/最大购买/升级自动化/全局配置=把"每步买1个"交给游戏自带自动化
+ */
 const KNOWLEDGE_PRIORITY = [
   'command-checkin',
   'command-quiz',
+  'time-offline',
+  'boost-production',
+  'bonus-achievement',
+  'knowledge-achievement',
   'quiz-accel',
   'quiz-difficulty',
-  'boost-production',
-  'knowledge-achievement',
-  'bonus-achievement',
-  'depth-points',
-  'max-buy',
   'auto-batch',
   'auto-upgrade',
+  'max-buy',
   'auto-global-config',
-  'time-offline',
+  'depth-points',
+  'boost-infinity',
+  'quiz-store',
   'time-store',
   'time-boost',
+  'time-offline-limit',
+  'time-overclock',
   'time-pause',
   'time-tick',
-  'time-overclock',
 ]
 
 /**机器人动作的钩子:阶段式策略用它们在"何时解锁/何时重置/买哪些维度"上覆盖贪心规则 */
@@ -227,6 +426,8 @@ interface ActionHooks {
   unlockGate?(): number
   /**解锁新层级前的额外收益要求(≤1=不额外要求);只对开局的第一次解锁有意义 */
   unlockGain?(): number
+  /**解锁新层级前要求的层级0点数门槛(0=不要求);用来推迟"第一次层级1重置"以抬高u1乘数 */
+  unlockPoints?(): number
   /**层级1重置必须达到的最低收益(0=按普通重置规则);spamLayer1为真时忽略 */
   layer1Gain?(): number
   /**层级1本阶段允许购买的维度数(只允许买id<该值);缺省不限 */
@@ -255,9 +456,98 @@ function makeActions(opts: GreedyOptions, hooks: ActionHooks = {}) {
   /**本次挑战里目标资源的最好值与其时间(推进式超时用) */
   let challengeBest: Decimal | undefined
   let challengeBestAt = new Decimal(0)
+  /**上一次打挑战内诊断的时间(每游戏分钟一行,避免逐帧刷屏) */
+  let lastChallengeLogAt = new Decimal(0)
   let now = new Decimal(0)
   /**当前时间:阶段式策略注入自己的时间轴,贪心策略用setTime喂进来的时间 */
   const time = () => hooks.now?.() ?? now
+  /**重置规则集:rules/defaultRule/ruleSet三种给法取第一个有的 */
+  const ruleSet = opts.ruleSet ?? new RuleSet({ rules: opts.rules, default: opts.defaultRule })
+  /**当前阶段(规则按阶段取;贪心策略恒为progress) */
+  const phase = (): BotPhase => opts.phase?.() ?? 'progress'
+  /**机器人自己记录的"本层历史最佳收益"(游戏里的bestPoints会被层级重置清零,不能当基准) */
+  const bestGain = new Map<string, Decimal>()
+  /**上一次重置该层的时间与当时的收益(停滞放宽用) */
+  const lastResetAt = new Map<string, Decimal>()
+  const lastResetGain = new Map<string, Decimal>()
+
+  /**记录一次层级重置(收益基准要在doReset清空bestPoints之前取,故由这里统一维护) */
+  function recordReset(layer: LayerId, gain: Decimal) {
+    const key = layer.toString()
+    const prev = bestGain.get(key)
+    if (prev == undefined || gain.gt(prev)) bestGain.set(key, gain)
+    lastResetAt.set(key, time())
+    lastResetGain.set(key, gain)
+  }
+
+  /**打一行重置诊断(层级/收益/距上次/点数/维度/收益基准),由opts.resetLog开关 */
+  function logReset(layer: LayerId, gain: Decimal, points: Decimal, dims: Decimal[]): void {
+    if (!opts.resetLog) return
+    const key = layer.toString()
+    const at = lastResetAt.get(key)
+    const gap = at ? time().sub(at) : undefined
+    opts.resetLog(
+      `[重置] t=${formatTime(time())} 层级${layer.toString()} 收益=${format(gain)}` +
+        ` 点数=${format(points)} 维度=[${dims.map((d) => format(d)).join('/')}]` +
+        ` 最佳收益=${format(bestGain.get(key) ?? gain)}` +
+        (gap ? ` 距上次=${formatTime(gap)}` : '') +
+        ` 阶段=${phase()}`,
+    )
+  }
+
+  /**
+   * 诊断:一圈动作前后的层级状态快照,精确报出"哪一层被重置了、收了多少收益、是不是被更高层清空的"
+   * 用快照对比而不是在重置点打日志:层级重置会把下层级联清空(那次是 forced、不发收益也不走onReset),
+   * 只在"点重置"处打日志会漏掉级联,正是"层级1为什么长期只有1点"这类问题的关键
+   */
+  function snapshotLayers(): Map<string, { points: Decimal; gain: Decimal; resets: Decimal; energy: Decimal }> {
+    const out = new Map<string, { points: Decimal; gain: Decimal; resets: Decimal; energy: Decimal }>()
+    for (const e of getOrderedLayers('asc')) {
+      out.set(e.key, {
+        points: e.L.points,
+        gain: resetGain(e.pos),
+        resets: e.L.resetCount,
+        energy: e.L.energy,
+      })
+    }
+    return out
+  }
+  /**对比前后快照并输出一行(重置/被清空/收益变动的层) */
+  function diffSnapshots(
+    before: Map<string, { points: Decimal; gain: Decimal; resets: Decimal; energy: Decimal }>,
+  ): void {
+    if (!opts.resetLog) return
+    const notes: string[] = []
+    for (const e of getOrderedLayers('asc')) {
+      const b = before.get(e.key)
+      const now = {
+        points: e.L.points,
+        gain: resetGain(e.pos),
+        resets: e.L.resetCount,
+        energy: e.L.energy,
+      }
+      if (!b) {
+        notes.push(`层级${e.key} 新解锁`)
+        continue
+      }
+      const gained = now.resets.gt(b.resets)
+      //被上层级联清空的判据:点数清零**且**能量清零。只用"点数变少"会误报——
+      //买维度本来就会把点数花掉,而层级0的点数每秒涨十倍,任何一帧的前后对比都能满足"点数变少"
+      const wiped = b.energy.gt(0) && now.energy.lte(0) && b.points.gt(0) && now.points.lt(b.points)
+      if (gained) {
+        notes.push(
+          `层级${e.key} 重置(+${format(now.resets.sub(b.resets))}) 收益=${format(now.gain)}` +
+            ` 点数=${format(b.points)}→${format(now.points)} 能量=${format(b.energy)}→${format(now.energy)}`,
+        )
+      } else if (wiped) {
+        notes.push(
+          `层级${e.key} 被上层清空 点数=${format(b.points)}→${format(now.points)}` +
+            ` 能量=${format(b.energy)}→${format(now.energy)}`,
+        )
+      }
+    }
+    if (notes.length > 0) opts.resetLog(`[回合] t=${formatTime(time())} ${notes.join(' | ')}`)
+  }
 
   /**知识收入:签到与答题(都按现实时间,由假时钟推进);答题按"完美玩家"处理(直接给出正确答案) */
   function actKnowledgeIncome(): boolean {
@@ -325,6 +615,15 @@ function makeActions(opts: GreedyOptions, hooks: ActionHooks = {}) {
   function actChallenge(): boolean {
     const active = getAllChallenges().find((d) => isActive(d) && !isForcedActive(d))
     if (active) {
+      //挑战内诊断:每游戏分钟一行,看清"目标资源到底在不在涨"
+      if (opts.resetLog && time().sub(lastChallengeLogAt).gte(60)) {
+        lastChallengeLogAt = time()
+        opts.resetLog(
+          `[挑战] t=${formatTime(time())} ${active.id} 资源=${format(challengeResource(active))}` +
+            ` 目标=${format(challengeGoal(active))} 最佳=${format(challengeBest ?? 0)}` +
+            ` 停滞计时=${formatTime(time().sub(challengeBestAt))}`,
+        )
+      }
       if (challengeDone(active)) {
         exitChallenge(active)
         return true
@@ -374,6 +673,34 @@ function makeActions(opts: GreedyOptions, hooks: ActionHooks = {}) {
       return peak != undefined && peak.gte(challengeGoal(d).mul(opts.challengeReady))
     })
     const target = candidates.find((d) => completions(d).lt(1)) ?? candidates[0]
+    //诊断:没进挑战时逐项报出每道门过没过(每游戏分钟一行)
+    if (!target && opts.resetLog && time().sub(lastChallengeLogAt).gte(60)) {
+      lastChallengeLogAt = time()
+      const why = unlocked
+        .map((d) => {
+          const t = challengeResetTarget(d)
+          const gl = challengeGoalLayer(d)
+          const dim = t ? dimensionAmount(t, opts.challengePrepareDim) : new Decimal(0)
+          const energy = gl ? getEnergy(gl) : new Decimal(0)
+          const peak = goalPeak.get(d.id) ?? new Decimal(0)
+          const need = challengeGoal(d).mul(opts.challengeReady)
+          const cd = giveUp.get(d.id)
+          const bad: string[] = []
+          if (!t || dim.lte(0)) bad.push('目标层维度不够')
+          if (opts.challengePrepareEnergy > 0 && energy.lt(opts.challengePrepareEnergy))
+            bad.push('目标层能量不够')
+          if (peak.lt(need)) bad.push('目标资源峰值不够')
+          if (cd?.gt(time()) ?? false) bad.push('放弃冷却中')
+          return (
+            `${d.id}:` +
+            (bad.length == 0 ? '全部满足' : bad.join('+')) +
+            `(层=${t?.toString() ?? '无'} 维度2=${format(dim)} 能量=${format(energy)}` +
+            ` 峰值=${format(peak)}/需${format(need)} 冷却至=${cd ? formatTime(cd) : '-'})`
+          )
+        })
+        .join(' ')
+      opts.resetLog(`[挑战诊断] t=${formatTime(time())} 未进入:${why}`)
+    }
     if (!target) return false
     enterChallenge(target)
     challengeEnteredAt = time()
@@ -386,7 +713,8 @@ function makeActions(opts: GreedyOptions, hooks: ActionHooks = {}) {
     //层级0点数门槛:第一个层级(层级1)不设门槛(它是前期唯一的推进手段),更高层级缺省要等unlockGate
     const layerCount = getOrderedLayers('asc').length
     const gate = hooks.unlockGate?.() ?? (layerCount > 1 ? opts.unlockGate : 0)
-    if (getPoints([0]).lt(gate)) return false
+    const need0 = hooks.unlockPoints?.() ?? 0
+    if (getPoints([0]).lt(Decimal.max(gate, need0))) return false
     const temp = findUnlockableTempLayer()
     if (!temp) return false
     const gain = resetGain(temp)
@@ -402,19 +730,78 @@ function makeActions(opts: GreedyOptions, hooks: ActionHooks = {}) {
     return unlocked != undefined
   }
 
-  /**执行一次层级重置(并把"重置了哪层、拿了多少收益"报给钩子) */
+  /**
+   * 执行一次层级重置(并把"重置了哪层、拿了多少收益"报给钩子)
+   * 注:重置必然把本层与下层清空(维度/可购买/点数归零),这是机制本身,没有"重置但保留下层"的做法
+   * @param layer 目标层级
+   * @param gain 本次收益(必须在doReset清空bestPoints之前算好并传进来)
+   */
   function resetLayer(layer: LayerId, gain: Decimal): void {
+    const before = getLayer(layer)
+    if (before) logReset(layer, gain, before.points, before.dimensions.map((d) => d[1]))
+    recordReset(layer, gain)
     doReset(layer)
     hooks.onReset?.(layer, gain)
+  }
+
+  /**
+   * 某层是否满足它自己的重置规则(规则四条件与游戏自动重置同义,基准换成本层历史最佳收益)
+   * @param rule 该层在该阶段的规则
+   * @param gain 本次收益
+   * @param pos 层级坐标
+   * @param points 本层当前点数
+   */
+  function ruleSatisfied(rule: ResetRule, gain: Decimal, pos: LayerId, points: Decimal): boolean {
+    const key = pos.toString()
+    const best = bestGain.get(key) ?? new Decimal(0)
+    //倍率/幂次的基准:best=历史最佳收益(缺省);current=当前点数;both=两者取大(任一基准成立即成立)
+    const both = rule.resource == 'current' ? points : rule.resource == 'both' ? Decimal.max(best, points) : best
+    const conditions: boolean[] = []
+    if (rule.time.gt(0)) {
+      //时间条件的计时与游戏一致:取上一层的resetTime(本层被上层重置后开始计时),取不到时退回本层
+      const elapsed = getLayer(prevLayer(pos))?.resetTime
+      if (elapsed) conditions.push(elapsed.gte(rule.time))
+    }
+    if (rule.point.gt(0)) conditions.push(gain.gte(rule.point))
+    if (rule.mult.gt(1))
+      conditions.push(both.gt(0) ? gain.gte(both.mul(rule.mult)) : gain.gt(0))
+    if (rule.power.gt(1))
+      conditions.push(both.gte(1) ? gain.gte(both.pow(rule.power)) : gain.gt(0))
+    if (rule.yieldAfter > 0) {
+      //停滞放宽:一直在涨就继续等(与"收益≥基准×倍率"不同,它允许基准不变时也重置)
+      const last = lastResetGain.get(key)
+      const at = lastResetAt.get(key)
+      const waited = at ? time().sub(at).gte(rule.yieldAfter) : false
+      const improving = last != undefined && gain.gt(last)
+      if (waited && improving) conditions.push(true)
+    }
+    if (conditions.length == 0) return false
+    return rule.combine == 'all' ? conditions.every((c) => c) : conditions.some((c) => c)
   }
 
   /**重置:从最高层往下,够格就晋升;都不够格时看无限重置 */
   function actReset(): boolean {
     const spam = hooks.spamLayer1?.() ?? false
     const openGain = hooks.layer1Gain?.() ?? 0
+    //挑战内默认保护两层:
+    //- 目标层(resetTarget):重置它会打断它的维度链,而那条链是重建下层的唯一依靠
+    //- 目标资源层(goalLayer,即目标层的下层):挑战的目标资源就是这一层的点数,而重置它会把这层点数清空
+    //  (层级≥1的点数只由"更高层的重置"发放,自己不会产出,所以清空后只能等下一次重置再涨)
+    const inChallenge = player.activeChallenges.length > 0
+    const activeDef = inChallenge
+      ? getAllChallenges().find((d) => isActive(d) && !isForcedActive(d))
+      : undefined
+    const protectedLayer = activeDef ? challengeResetTarget(activeDef) : undefined
+    const protectedGoal = activeDef ? challengeGoalLayer(activeDef) : undefined
     for (const e of getOrderedLayers('desc')) {
       if (isLayer0(e.pos)) continue
       if (!e.L.active || !canReset(e.pos)) continue
+      if (
+        !opts.challengeResetInside &&
+        ((protectedLayer != undefined && compareLayer(e.pos, protectedLayer) >= 0) ||
+          (protectedGoal != undefined && !isLayer0(e.pos) && compareLayer(e.pos, protectedGoal) >= 0))
+      )
+        continue
       const gain = resetGain(e.pos)
       //开局:层级1的重置要攒到要求的收益;spam(抓a24窗口)只要求canReset
       if (compareLayer(e.pos, [1]) == 0 && (spam || openGain > 0)) {
@@ -424,12 +811,27 @@ function makeActions(opts: GreedyOptions, hooks: ActionHooks = {}) {
         }
         continue
       }
-      //够本才重置:本次收益至少是"历史最佳收益"的resetMult倍(所以间隔会自然拉长,收益指数增长);
+      //规则引擎:配了规则的层按规则判(规则里可以什么都不满足=只攒不重置)
+      const rule = ruleSet.get(phase(), e.pos)
+      if (rule) {
+        if (ruleSatisfied(rule, gain, e.pos, e.L.points)) {
+          resetLayer(e.pos, gain)
+          return true
+        }
+        continue
+      }
+      //没配规则的层沿用通用贪心规则:本次收益至少是"历史最佳收益"的resetMult倍;
       //长时间没进展时放宽到"略优于历史最佳"。
       //用bestPoints而不是当前点数:买维度会把点数花到0,拿当前点数当基准会导致每步都"够本"→ 无限抖动
       const enough = gain.gte(e.L.bestPoints.mul(opts.resetMult))
       const stalled = e.L.resetTime.gte(opts.resetTime) && gain.gte(e.L.bestPoints)
-      if (gain.gt(0) && (e.L.bestPoints.eq(0) || enough || stalled)) {
+      //minGain:某层首次重置的门槛(Infinity=永不首次重置)
+      //为什么需要它:上层级联会把下层点数清到0,该层随后只拿得到1点收益、重置后bestPoints=1,
+      //"收益≥bestPoints×倍率"便再也不成立 → 该层永远停在1点、买不出维度链(空层立刻重置的死锁)
+      const minGain = ruleSet.config.rules?.[e.key]?.minGain ?? opts.minGain ?? 0
+      const firstReset = (bestGain.get(e.key) ?? new Decimal(0)).lte(0)
+      const gateOk = !isFinite(minGain) ? !firstReset : minGain <= 0 || gain.gte(minGain)
+      if (gain.gt(0) && gateOk && (firstReset || enough || stalled)) {
         resetLayer(e.pos, gain)
         return true
       }
@@ -441,38 +843,51 @@ function makeActions(opts: GreedyOptions, hooks: ActionHooks = {}) {
     return false
   }
 
+  /**
+   * 在一层上执行一轮购买(先升级,再按buyOrder买维度,最后买可购买)
+   * @param pos 目标层级
+   * @param amount 每次买几个(one=只买1个;max=按预算买最大;fill=先把每个维度买出1个再接买最大)
+   * @param limit 允许购买的维度数(只买id<该值)
+   * @returns 是否发生了购买
+   */
+  function buyOnLayer(pos: LayerId, amount: 'one' | 'max' | 'fill', limit: number): boolean {
+    let acted = false
+    const e = getLayer(pos)
+    if (!e || !e.active) return false
+    const order = getLayerOrder(pos)
+    for (const u of getUpgrades(order)) {
+      if (!canBuyUpgrade(pos, u.id)) continue
+      buyUpgrade(pos, u.id)
+      acted = true
+    }
+    const n = e.dimensions.length
+    //fill:本层还有维度没买出来时只每个买1个(把维链接上),买齐后才按buyOrder买最大
+    const fill =
+      amount == 'fill' && e.dimensions.some((_d, i) => i < limit && dimensionAmount(pos, i, 1).lte(0))
+    for (let i = 0; i < n; i++) {
+      const id = opts.buyOrder == 'asc' ? i : n - 1 - i
+      if (id >= limit) continue
+      const one = amount == 'one' || fill
+      const spent = one ? buyDimension(pos, id, 1) : buyDimensionMax(pos, id)
+      if (spent.gt(0)) acted = true
+    }
+    for (const b of getBuyables(order)) {
+      if (!isBuyableUnlocked(pos, b.id)) continue
+      const spent = amount == 'one' ? buyBuyable(pos, b.id, 1) : buyBuyableMax(pos, b.id)
+      if (spent.gt(0)) acted = true
+    }
+    return acted
+  }
+
   /**购买:每层先买能买的升级,再按buyOrder买满各维度,最后买可购买 */
   function actBuy(): boolean {
     let acted = false
     const layer1Limit = hooks.layer1BuyLimit?.() ?? Infinity
     const amount = hooks.buyAmount?.() ?? opts.buyAmount
     for (const e of getOrderedLayers('desc')) {
-      if (!e.L.active) continue
-      const order = getLayerOrder(e.pos)
-      for (const u of getUpgrades(order)) {
-        if (!canBuyUpgrade(e.pos, u.id)) continue
-        buyUpgrade(e.pos, u.id)
-        acted = true
-      }
       //开局只允许买"计划里那一个"维度(先维度1、第一次重置后再买维度2),其余留给正常推进阶段
       const limit = compareLayer(e.pos, [1]) == 0 ? layer1Limit : Infinity
-      const n = e.L.dimensions.length
-      //fill:本层还有维度没买出来时只每个买1个(把维链接上),买齐后才按buyOrder买最大
-      const fill =
-        amount == 'fill' &&
-        e.L.dimensions.some((_d, i) => i < limit && dimensionAmount(e.pos, i, 1).lte(0))
-      for (let i = 0; i < n; i++) {
-        const id = opts.buyOrder == 'asc' ? i : n - 1 - i
-        if (id >= limit) continue
-        const one = amount == 'one' || fill
-        const spent = one ? buyDimension(e.pos, id, 1) : buyDimensionMax(e.pos, id)
-        if (spent.gt(0)) acted = true
-      }
-      for (const b of getBuyables(order)) {
-        if (!isBuyableUnlocked(e.pos, b.id)) continue
-        const spent = amount == 'one' ? buyBuyable(e.pos, b.id, 1) : buyBuyableMax(e.pos, b.id)
-        if (spent.gt(0)) acted = true
-      }
+      if (buyOnLayer(e.pos, amount, limit)) acted = true
     }
     return acted
   }
@@ -485,6 +900,8 @@ function makeActions(opts: GreedyOptions, hooks: ActionHooks = {}) {
       giveUp.clear()
     }
     let acted = false
+    //诊断:一圈动作前后对比快照,能看出"哪层重置了、哪层被上层清空了"(级联不走onReset,只能这样抓)
+    const before = opts.resetLog ? snapshotLayers() : undefined
     const actions = [
       actKnowledgeIncome,
       actTime,
@@ -498,6 +915,7 @@ function makeActions(opts: GreedyOptions, hooks: ActionHooks = {}) {
     for (const f of actions) {
       if (f()) acted = true
     }
+    if (before) diffSnapshots(before)
     return acted
   }
 
@@ -517,6 +935,7 @@ export function greedyPolicy(opts: GreedyOptions = GREEDY_DEFAULTS): BotPolicy {
   const bot = makeActions(opts)
   return {
     name: 'greedy',
+    phase: () => opts.phase?.() ?? 'progress',
     setTime: (t) => bot.setTime(t),
     act: () => bot.run(),
   }
@@ -533,6 +952,12 @@ export interface PhasedOptions extends GreedyOptions {
   opening: 'invest' | 'fast'
   /**invest打法下前两次层级1重置要求的最低收益(点数);11=维度1(1点)+维度2(10点)的总价 */
   openGain: number
+  /**
+   * 解锁层级1(即第一次层级1重置)前要求的层级0点数门槛(0=够条件就解锁)
+   * 第一次层级1重置会定下层级1的点数,而层级1的u1把 ln²(层级1点数) 乘到层级0的点数获取上,
+   * 故"晚一点做第一次重置"能把这条永久乘数抬得更高;代价是这段时间拿不到层级1的能量加成
+   */
+  openPoints: number
   /**
    * 解锁层级2及以上要求的临时层收益(点数):临时层收益=(下层点数/1e4)^0.25,
    * 故1点=下层1e4点数(作者路线:"有a24+1e4层级1点数就可以重置了"),可以等更大的收益再重置
@@ -565,6 +990,7 @@ export const PHASED_DEFAULTS: PhasedOptions = {
   ...GREEDY_DEFAULTS,
   opening: 'invest',
   openGain: 11,
+  openPoints: 0,
   buyAmount: 'fill',
   challengePrepareDim: 2,
   nextLayerGain: 1,
@@ -586,7 +1012,7 @@ export const PHASED_DEFAULTS: PhasedOptions = {
 export function phasedPolicy(opts: PhasedOptions = PHASED_DEFAULTS): BotPolicy {
   const invest = opts.opening == 'invest'
   const openGain = invest ? Math.max(1, opts.openGain) : 1
-  let phase: 'layer0' | 'layer1Open' | 'progress' = 'layer0'
+  let phase: BotPhase = 'layer0'
   /**层级1已经历的重置次数(解锁层级1算第一次) */
   let layer1Resets = 0
   /**上一次层级1重置的时间:相邻两次的间隔就是"层级0重建到可重置"的耗时(a24要求<1秒) */
@@ -595,6 +1021,9 @@ export function phasedPolicy(opts: PhasedOptions = PHASED_DEFAULTS): BotPolicy {
   let huntUntil = new Decimal(-1)
   let a24Done = false
   let now = new Decimal(0)
+  /**重置规则集:把按层规则交给动作层,阶段名由本策略的状态机决定 */
+  const ruleSet = opts.ruleSet ?? new RuleSet({ rules: opts.rules, default: opts.defaultRule })
+  const gates = ruleSet.gates
   /**是否正在抓a24的1秒窗口 */
   const hunting = () => opts.huntA24 && !a24Done && now.lt(huntUntil)
 
@@ -609,50 +1038,69 @@ export function phasedPolicy(opts: PhasedOptions = PHASED_DEFAULTS): BotPolicy {
     lastResetAt = now
   }
 
-  const bot = makeActions(opts, {
-    now: () => now,
-    //解锁层级2及以上不看层级0点数,只看"a24到手 + 临时层收益够"(见unlockGain)
-    unlockGate: () => 0,
-    //层级1一够条件就解锁(人工约2分钟);层级2及以上:a24必做,再要求临时层收益≥nextLayerGain
-    unlockGain: () => {
-      if (phase == 'layer0') return 1
-      return hasAchievement('a24') ? opts.nextLayerGain : Infinity
+  /**按阶段阈值判断开局阶段是否可以结束(两种阈值任一满足即结束) */
+  function checkPhaseDone(): void {
+    if (phase != 'layer1Open') return
+    if (gates.layer1OpenResets != null && layer1Resets >= gates.layer1OpenResets) {
+      phase = 'progress'
+      return
+    }
+    if (gates.nextLayerAt != null && getOrderedLayers('asc').length >= gates.nextLayerAt) {
+      phase = 'progress'
+    }
+  }
+
+  const bot = makeActions(
+    { ...opts, ruleSet, phase: () => phase },
+    {
+      now: () => now,
+      //解锁层级2及以上不看层级0点数,只看"a24到手 + 临时层收益够"(见unlockGain)
+      unlockGate: () => 0,
+      //第一次层级1重置(解锁层级1)前要求的层级0点数:openPoints>0时推迟它,把u1的永久乘数抬更高
+      //只在"还没有层级1"时生效:否则这条门槛会把后面的层级2/3解锁一起挡住
+      unlockPoints: () => (phase == 'layer0' && getOrderedLayers('asc').length <= 1 ? opts.openPoints : 0),
+      //层级1一够条件就解锁(人工约2分钟);层级2及以上:a24必做,再要求临时层收益≥nextLayerGain
+      unlockGain: () => {
+        if (phase == 'layer0') return 1
+        return hasAchievement('a24') ? opts.nextLayerGain : Infinity
+      },
+      //开局:第二次层级1重置同样攒到要求的收益
+      layer1Gain: () => {
+        if (phase == 'layer1Open') return openGain
+        //a35支线:层级2重置会把层级1的resetCount清零,故"层级1的第1次重置≥1e4点"要等层级2之后再抓
+        const L1 = getLayer([1])
+        const afterLayer2 = getOrderedLayers('asc').length > 2
+        if (opts.deliberateA35 && !hasAchievement('a35') && afterLayer2 && L1?.resetCount.eq(0))
+          return 1e4
+        return 0
+      },
+      //开局:先买维度1(1点)、第一次重置后再买维度2(10点),其余维度留到正常推进阶段
+      //a27支线:到手前完全不买层级1的维度(层级1能量恒为0)
+      layer1BuyLimit: () => {
+        if (opts.deliberateA27 && !hasAchievement('a27')) return 0
+        return phase == 'layer1Open' ? layer1Resets + 1 : Infinity
+      },
+      //开局按"买1个"来(等于人工点击:先维度1、再维度2);之后缺省用fill(先把每个维度买出1个再接买最大)
+      buyAmount: () => (phase == 'layer1Open' ? 'one' : opts.buyAmount),
+      spamLayer1: () => hunting(),
+      onUnlock(pos, gain) {
+        if (compareLayer(pos, [1]) != 0) return
+        //解锁层级1本身不计入"前两次重置"(人工是先花2分钟解锁,再攒11点做前两次重置)
+        layer1Resets = 0
+        phase = 'layer1Open'
+        noteLayer1('解锁层级1', gain)
+        huntUntil = now.add(opts.a24Window)
+      },
+      onReset(layer, gain) {
+        checkPhaseDone()
+        if (compareLayer(layer, [1]) != 0) return
+        layer1Resets++
+        noteLayer1(`第${layer1Resets}次层级1重置`, gain)
+        checkPhaseDone()
+        huntUntil = now.add(opts.a24Window)
+      },
     },
-    //开局:第二次层级1重置同样攒到要求的收益
-    layer1Gain: () => {
-      if (phase == 'layer1Open') return openGain
-      //a35支线:层级2重置会把层级1的resetCount清零,故"层级1的第1次重置≥1e4点"要等层级2之后再抓
-      const L1 = getLayer([1])
-      const afterLayer2 = getOrderedLayers('asc').length > 2
-      if (opts.deliberateA35 && !hasAchievement('a35') && afterLayer2 && L1?.resetCount.eq(0))
-        return 1e4
-      return 0
-    },
-    //开局:先买维度1(1点)、第一次重置后再买维度2(10点),其余维度留到正常推进阶段
-    //a27支线:到手前完全不买层级1的维度(层级1能量恒为0)
-    layer1BuyLimit: () => {
-      if (opts.deliberateA27 && !hasAchievement('a27')) return 0
-      return phase == 'layer1Open' ? layer1Resets + 1 : Infinity
-    },
-    //开局按"买1个"来(等于人工点击:先维度1、再维度2);之后缺省用fill(先把每个维度买出1个再接买最大)
-    buyAmount: () => (phase == 'layer1Open' ? 'one' : opts.buyAmount),
-    spamLayer1: () => hunting(),
-    onUnlock(pos, gain) {
-      if (compareLayer(pos, [1]) != 0) return
-      //解锁层级1本身不计入"前两次重置"(人工是先花2分钟解锁,再攒11点做前两次重置)
-      layer1Resets = 0
-      phase = 'layer1Open'
-      noteLayer1('解锁层级1', gain)
-      huntUntil = now.add(opts.a24Window)
-    },
-    onReset(layer, gain) {
-      if (compareLayer(layer, [1]) != 0) return
-      layer1Resets++
-      noteLayer1(`第${layer1Resets}次层级1重置`, gain)
-      if (layer1Resets >= 2) phase = 'progress'
-      huntUntil = now.add(opts.a24Window)
-    },
-  })
+  )
 
   return {
     name: `phased/${opts.opening}`,

@@ -19,8 +19,12 @@
 //  --unlock-gate=点数 解锁新层级所需的最低层级0点数(缺省1e100=先拿到a28与挑战;填1=一够条件就解锁)
 //  --reset-mult=倍数   层级重置要求"本次收益 ≥ 历史最佳收益×该倍数"(缺省2;调小=重置更频繁)
 //  --reset-time=秒     停滞放宽:超过该秒数且收益不低于历史最佳就重置(缺省1800;0=从不放宽,只按倍率判)
+//  --rules=JSON      按层指定重置规则(见bot.ts的重置规则引擎),如 --rules='{"1":{"mult":2},"2":{"point":1e6}}'
+//  --config=名字     从scripts/config/<名字>.json读整套规则集(扫参脚本与它共用同一份)
 //  --verbose  每行指标快照后附上各层级状态(诊断用)
+//规则文件里可以按层声明四个条件(时间/点数/倍率/幂次),与游戏自动重置同义;扫参与对照见 scripts/sweep.ts
 //策略与口径见 docs/面向开发者/测试与平衡.md
+import { existsSync, readFileSync } from 'node:fs'
 import { format, formatTime, formatWhole } from '@/tools/format'
 import {
   GREEDY_DEFAULTS,
@@ -28,8 +32,10 @@ import {
   nonePolicy,
   PHASED_DEFAULTS,
   phasedPolicy,
+  RuleSet,
   runSim,
   type BotPolicy,
+  type BotRuleConfig,
   type SimRow,
 } from './bot'
 
@@ -63,6 +69,25 @@ const nextGain = Number(flag('next-gain') ?? 0)
 const huntDt = Number(flag('hunt-dt') ?? 0)
 const buyAmount: 'one' | 'max' | 'fill' =
   flag('buy-amount') == 'one' ? 'one' : flag('buy-amount') == 'fill' ? 'fill' : 'max'
+/**按层重置规则:--rules直接给JSON,--config读scripts/config下的文件(与sweep.ts共用同一份) */
+const resetConfig = loadRuleConfig(flag('rules'), flag('config'))
+
+/**读取规则集:优先--rules,其次--config读文件,都没有时返回undefined(用策略自带缺省) */
+function loadRuleConfig(
+  rulesJson: string | undefined,
+  configName: string | undefined,
+): BotRuleConfig | undefined {
+  if (rulesJson) return JSON.parse(rulesJson) as BotRuleConfig
+  if (configName) {
+    const path = `scripts/config/${configName}.json`
+    if (!existsSync(path)) {
+      console.log(`  未找到规则集 ${path},改用策略缺省规则`)
+      return undefined
+    }
+    return JSON.parse(readFileSync(path, 'utf8')) as BotRuleConfig
+  }
+  return undefined
+}
 
 /**按命令行开关构造机器人策略 */
 function makePolicy(): BotPolicy {
@@ -74,6 +99,7 @@ function makePolicy(): BotPolicy {
     resetTime:
       resetTime == undefined ? GREEDY_DEFAULTS.resetTime : resetTime > 0 ? resetTime : Infinity,
     buyAmount,
+    ...(resetConfig ? { ruleSet: new RuleSet(resetConfig) } : {}),
   }
   if (bot == 'none') return nonePolicy()
   if (bot == 'greedy') return greedyPolicy({ ...GREEDY_DEFAULTS, ...common })

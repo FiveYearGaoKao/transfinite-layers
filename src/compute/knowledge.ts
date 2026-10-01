@@ -272,9 +272,9 @@ export const KNOWLEDGE_UPGRADES: KnowledgeUpgradeDef[] = [
     category: 'auto',
     description: '解锁层级页"购买模式"开关(买1个/买最大)和"全部最大"按钮(快捷键M)',
     maxAmount: new Decimal(1),
-    cost: constantCurve(50),
+    cost: constantCurve(25),
     require: [['auto-batch', new Decimal(1)]],
-    canBuy: () => hasAchievement('a51'),
+    canBuy: () => true,
   },
   {
     id: 'auto-upgrade',

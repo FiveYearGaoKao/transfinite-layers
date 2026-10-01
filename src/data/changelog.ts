@@ -2,6 +2,14 @@
 //按版本从新到旧排列
 export const CHANGELOG: { version: string; name?: string; notes: string[] }[] = [
   {
+    version: 'v0.2.1',
+    notes: [
+      '回调了a24(速通高手)的效果:现在永远至少保留1点数,即使曾经将点数花完',
+      '降低了"购买最大"知识升级的花费和购买门槛',
+      '修复了旧版自动化配置不能正常加载的bug',
+    ],
+  },
+  {
     version: 'v0.2.0',
     name: '无限时代',
     notes: [
