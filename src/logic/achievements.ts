@@ -190,7 +190,7 @@ const normalAchievements: AchievementDef[] = [
     name: '速通高手',
     description: '在1秒内进行层级1的重置',
     reward: 4,
-    effectText: '每层重置后保留1点数',
+    effectText: '每层重置后保留至少1点数',
     trigger: 'reset',
     isCompleted: ({ layer }) =>
       compareLayer(layer, [1]) == 0 && (getLayer([0])?.resetTime.lt(1) ?? false),

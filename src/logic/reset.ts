@@ -54,18 +54,15 @@ function resetDataInner(layer: LayerId, opts: ResetOptions) {
   const L = getLayer(layer)
   if (L) {
     const keepUpgrades = opts.keepUpgrades ?? false
-    let points = isLayer0(layer) ? new Decimal(1) : new Decimal(0)
-    if (hasAchievement('a24')) points = Decimal.max(points, 1)
-    //无限升级iu31:普通层级重置后保留(当前解锁普通成就总量)的点数
+    //层级0永远至少保留1点,如果解锁了a24(速通高手)其他层也能保留1点.
+    const minPoints = isLayer0(layer) || hasAchievement('a24') ? new Decimal(1) : new Decimal(0)
+    let maxPoints = minPoints
+    //无限升级iu31:普通层级重置后保留至多(当前解锁普通成就总量)的点数
     if (hasInfinityUpgrade('iu31'))
-      points = Decimal.max(points, getUnlockedNormalAchievementCount())
-    //必须是min(上限)而不是直接赋值:iu31的"保留N点"若当作"设为N点",则"进入c4后在最高层重开本轮"
-    //会把该层点数凭空刷到N(几乎无损白拿N点),退出挑战的级联重置更会让每一层都白拿N点
-    L.points = Decimal.min(L.points, points)
-    //层级0的点数下限恒为1("本轮起点"):点数被花光时必须把它抬回来。
-    //否则层级0既没有产出(维度被清空)也已没有任何重置入口(重开本轮/挑战进出走的都是这里),整档会卡死;
-    //1点必然买得起维度1(维度1价格恒为base^0=1)。a24/iu31只提高上面那个"保留上限",不抬这里。
-    if (isLayer0(layer)) L.points = Decimal.max(L.points, 1)
+      maxPoints = Decimal.max(maxPoints, getUnlockedNormalAchievementCount())
+    //iu31只能提供上限而不是直接赋值:否则则"进入c4后在最高层重开本轮"会把该层点数凭空刷到N(几乎无损白拿N点)
+    //而下限1点是不破坏平衡的,因为你解锁了这个层就代表你曾经至少拥有过1点数
+    L.points = L.points.clamp(minPoints, maxPoints)
     L.totalPoints = new Decimal(0)
     L.bestPoints = new Decimal(0)
     L.resetCount = new Decimal(0)
